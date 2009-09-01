@@ -199,7 +199,7 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
 }
 
 function _plugin_manager_create_and_setup_directories($filetransfer, $mode = 0755) {
-  
+
   $theme_dir = _plugin_get_theme_dir();
   $module_dir = _plugin_get_module_dir();
   // If there are no module or theme directories create them.
@@ -210,8 +210,12 @@ function _plugin_manager_create_and_setup_directories($filetransfer, $mode = 075
     _plugin_manager_create_dirs();
   }
 
-  $filetransfer->chmod($theme_dir, $mode, TRUE);
-  $filetransfer->chmod($module_dir, $mode, TRUE);
+  if (!is_writable($theme_dir)) {
+    $filetransfer->chmod($theme_dir, $mode, TRUE);
+  }
+  if (!is_writable($module_dir)) {
+    $filetransfer->chmod($module_dir, $mode, TRUE);
+  }
 }
 
 function _plugin_manager_create_dirs() {
