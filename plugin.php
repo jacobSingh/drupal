@@ -8,21 +8,15 @@ define('DRUPAL_ROOT', getcwd());
 
 /**
  * @file
- * Administrative page for handling updates from one Drupal version to another.
- *
- * Point your browser to "http://www.example.com/update.php" and follow the
- * instructions.
- *
- * If you are not logged in as administrator, you will need to modify the access
- * check statement inside your settings.php file. After finishing the upgrade,
- * be sure to open settings.php again, and change it back to its original state!
+ * Sub file to deploy and upgrade modules.
  */
 
 /**
- * Global flag to identify update.php run, and so avoid various unwanted
- * operations, such as hook_init() and hook_exit() invokes, css/js preprocessing
- * and translation, and solve some theming issues. This flag is checked on several
- * places in Drupal code (not just update.php).
+ * Global flag to identify update.php and plugin.php runs, and so
+ * avoid various unwanted operations, such as hook_init() and
+ * hook_exit() invokes, css/js preprocessing and translation, and
+ * solve some theming issues. This flag is checked on several places
+ * in Drupal code (not just plugin.php).
  */
 define('MAINTENANCE_MODE', 'update');
 
