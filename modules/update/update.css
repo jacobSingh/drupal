@@ -108,3 +108,34 @@ table.update,
 .update .check-manually {
   padding-left: 1em; /* LTR */
 }
+
+
+table tbody tr.update-security,
+table tbody tr.update-unsupported {
+  background: #fcc;
+}
+
+th.update-project-name {
+  width: 50%;
+}
+
+.connection-settings-update-filetransfer-default-wrapper {
+  float:left;
+}
+
+#edit-submit-connection {
+  clear: both;
+}
+
+.filetransfer {
+  display:none;
+  clear:both;
+}
+
+#edit-connection-settings-change-connection-type {
+  margin: 2.6em 0.5em 0em 1em;
+}
+
+.update-major-version-warning {
+  color:#ff0000;
+}
