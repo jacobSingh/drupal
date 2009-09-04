@@ -12,7 +12,7 @@
  */
 function update_update_form($form_state = array()) {
   $form = array();
-  
+
   if (!isset($form_state['values'])) {
     // This is the first page of the update process.
     $form = _update_update_form_update_table();
@@ -396,7 +396,7 @@ function update_batch_copy_project($project, $url, &$context) {
   }
   else {
     //This is a fresh install, not an update
-    $type = _update_get_project_type($project_location . '/' . $project . '.info');
+    $type = _update_get_project_type($project_source_dir);
     if (!$type) {
       _update_batch_create_message($context['results'][$project], t("Unable to determine project type for %name", array("%name" => $project)), FALSE);
       $context['results'][$project]['#abort'] = TRUE;
@@ -599,17 +599,15 @@ function _update_get_schema_updates($project) {
 /**
  * Helper function, given an info file, will determine what type of project it is
  *
- * @param string $info_file path to info file
+ * @param string $project_directory path to project
  *
  * @return string project type, could be theme or module.
  */
-function _update_get_project_type($info_file) {
-  $info = drupal_parse_info_file($info_file);
-  if ($info['engine']) {
-    return 'theme';
-    //we can assume this is a theme
+function _update_get_project_type($project_directory) {
+  if (file_scan_directory($project_directory, '/.*\.module/')) {
+    return 'module';
   }
-  return 'module';
+  return 'theme';
 }
 
 
