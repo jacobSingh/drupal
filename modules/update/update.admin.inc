@@ -627,12 +627,11 @@ function update_get_file($url) {
   }
 
   // Check the cache and download the file if needed.
-  $local = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-cache/' . basename($parsed_url['path']);
+  $local = 'temporary://update-cache/' . basename($parsed_url['path']);
+
   if (!file_exists(DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-cache/')) {
     mkdir(DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-cache/');
   }
-  
-  system_retrieve_file($url);
   
   if (!file_exists($local)) {
     return system_retrieve_file($url, $local);
@@ -770,13 +769,14 @@ function _update_find_info_file($directory) {
     return FALSE;
   }
   foreach ($info_files as $info_file) {
-    if (drupal_substr($info_file, 0, -5) == basename($directory)) {
+    if (drupal_substr($info_file->filename, 0, -5) == basename($directory)) {
       // Has the same name as the directory, is prefered.
-      return $info_file;
+      return $info_file->uri;
     }
   }
   // Return the first one.
-  return array_shift($info_files);
+  $info_file = array_shift($info_files);
+  return $info_file->uri;
 }
 
 function update_plugin_manager_access() {
