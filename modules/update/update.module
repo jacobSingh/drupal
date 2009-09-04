@@ -160,23 +160,8 @@ function update_menu() {
     'file' => 'update.admin.inc',
   );
 
-  /**
-   * JS: This is kinda stupid, MENU_LOCAL_TASK requires the path to be the same...
-   * Isn't really a report
-   */
-  $items['admin/reports/updates/install'] = array(
-    'title' => 'Add-ons',
-    'description' => 'Install new modules and themes',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('update_install_form'),
-    'access arguments' => array('administer site configuration'),
-    'weight' => 20,
-    'type' => MENU_LOCAL_TASK,
-    'file' => 'update.admin.inc',
-  );
-
   $items['admin/reports/updates/full'] = array(
-    'title' => 'Update status report',
+    'title' => 'Full update report',
     'description' => 'A comprehensive list of all modules installed on your system and their status.',
     'page callback' => 'update_status',
     'access arguments' => array('administer site configuration'),
@@ -215,6 +200,37 @@ function update_menu() {
   );
 
   return $items;
+}
+
+function update_menu_alter(&$items) {
+  $items['admin/config/modules/install'] = array(
+    'title' => 'Install',
+    'description' => 'Install new modules and themes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_install_form'),
+    // JS: There is a bug in menu which causes problems when you use this.
+    //'access callback' => 'update_plugin_manager_access',
+    'access arguments' => array(),
+    'access arguments' => array('administer site configuration'),
+    'weight' => 20,
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'update.admin.inc',
+    'file path' => dirname(__FILE__),
+  );
+  $items['admin/appearance/install'] = array(
+    'title' => 'Install',
+    'description' => 'Install',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_install_form'),
+    // JS: There is a bug in menu which causes problems when you use this.
+    //'access callback' => 'update_plugin_manager_access',
+    'access arguments' => array(),
+    'access arguments' => array('administer site configuration'),
+    'weight' => 20,
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'update.admin.inc',
+    'file path' => dirname(__FILE__),
+  );
 }
 
 /**
