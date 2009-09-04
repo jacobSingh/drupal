@@ -104,18 +104,28 @@ function _update_update_form_update_table() {
     );
     return $form;
   }
-  $form['projects'] = array(
-    '#type' => 'tableselect',
-    '#options' => $options,
-    '#header' => array('title' => array('data' => t('Name'), 'class' => array('update-project-name')), 'installed_version' => t('Installed version'), 'recommended_version' => t('Recommended version')),
-  );
 
   $form['#attached_css'][] = drupal_get_path('module', 'update') . '/update.css';
-  $form['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Install these updates'),
-    '#weight' => 100,
-  );
+
+  $headers = array('title' => array('data' => t('Name'), 'class' => array('update-project-name')), 'installed_version' => t('Installed version'), 'recommended_version' => t('Recommended version'));
+  // This is the kill switch for being able to perform updates
+  if (update_plugin_manager_access()) {
+    $form['projects'] = array(
+      '#type' => 'tableselect',
+      '#options' => $options,
+      '#header' => $headers,
+    );
+
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Install these updates'),
+      '#weight' => 100,
+    );
+  } else {
+    $form['projects'] = array();
+    $form['projects']['#type'] = "markup";
+    $form['projects']['#markup'] = theme('table', $headers, $options);
+  }
 
   return $form;
 }
@@ -751,6 +761,20 @@ function update_batch_enable_project($project) {
   }
 }
 
+/**
+ * Looks through a directory, preference is for info file with same name as directory
+ *
+ * @param string $directory
+ *
+ * return string $path
+ */
+function _update_find_info_file($directory) {
+  $fi = new DirectoryIterator($directory);
+  foreach ($fi as $file) {
+    dpr($file);
+  }
+}
+
 function update_plugin_manager_access() {
-  return TRUE;
+  return variable_get('plugin_manager_enabled', TRUE);
 }
