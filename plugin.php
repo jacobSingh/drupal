@@ -24,8 +24,7 @@ require_once DRUPAL_ROOT . '/includes/plugin.inc';
 
 // Some unavoidable errors happen because the database is not yet up-to-date.
 // Our custom error handler is not yet installed, so we just suppress them.
-// ini_set('display_errors', FALSE);
-// JS: This is crazy.
+ini_set('display_errors', FALSE);
 
 if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
 

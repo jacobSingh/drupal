@@ -26,7 +26,6 @@ function update_update_form($form_state = array()) {
       '#value' => t('Install these updates'),
       '#weight' => 100,
     );
-    //$form += _update_update_form_backend_chooser($form_state);
   }
   return $form;
 }
@@ -587,7 +586,6 @@ function _update_get_schema_updates($project) {
   }
   $updates_to_run = array();
   $modules_with_updates = update_get_update_list();
-  //@JS: This is broken
   if ($updates = $modules_with_updates[$project]) {
     if ($updates['start']) {
       return $updates['pending'];
