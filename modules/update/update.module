@@ -210,7 +210,7 @@ function update_menu_alter(&$items) {
     'page arguments' => array('update_install_form'),
     // JS: There is a bug in menu which causes problems when you use this.
     //'access callback' => 'update_plugin_manager_access',
-    'access arguments' => array(),
+    //'access arguments' => array(),
     'access arguments' => array('administer site configuration'),
     'weight' => 20,
     'type' => MENU_LOCAL_TASK,
@@ -224,7 +224,7 @@ function update_menu_alter(&$items) {
     'page arguments' => array('update_install_form'),
     // JS: There is a bug in menu which causes problems when you use this.
     //'access callback' => 'update_plugin_manager_access',
-    'access arguments' => array(),
+    //'access arguments' => array(),
     'access arguments' => array('administer site configuration'),
     'weight' => 20,
     'type' => MENU_LOCAL_TASK,

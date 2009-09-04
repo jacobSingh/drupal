@@ -385,8 +385,9 @@ function update_batch_copy_project($project, $url, &$context) {
 
   $project_source_dir = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
   // Now check the dependencies.
-  _update_check_dependencies($project_source_dir . "/$project.info");
-
+  $info_file = _update_find_info_file($project_source_dir);
+  $dependencies = _update_check_dependencies($info_file);
+  //@TODO: Not yet implemented
 
   if ($project_info = _update_get_project_type_and_location($project)) {
     // This is an update
