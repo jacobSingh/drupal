@@ -213,7 +213,7 @@ function update_install_form(&$form_state) {
   $form['project_url'] = array(
     '#type' => 'textfield',
     '#title' => t('URL'),
-    '#description' => t('Paste the url to a Drupal module or theme archive (.tar.gz) here to install it.'),
+    '#description' => t('Paste the url to a Drupal module or theme archive (.tar.gz) here to install it. (e.g http://ftp.drupal.org/files/projects/projectname.tar.gz)'),
   );
 
   $form['information'] = array(

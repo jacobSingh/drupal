@@ -35,7 +35,7 @@ function plugin_filetransfer_form($form_state) {
 
   $form['information']['main_header'] = array(
     '#prefix' => '<h3>',
-    '#markup' => t('Please provide your server connection details'),
+    '#markup' => t('To upload your plugin please provide your server connection details'),
     '#suffix' => '</h3>',
   );
 
