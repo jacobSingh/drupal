@@ -513,7 +513,7 @@ function update_untar($file) {
   if (!file_exists($extraction_dir)) {
     mkdir($extraction_dir);
   }
-  $archive_tar = new Archive_Tar($file);
+  $archive_tar = new Archive_Tar(drupal_realpath($file));
   if (!$archive_tar->extract($extraction_dir)) {
     throw new Exception(t('Unable to extact %file', array('%file' => $file)));
   }
