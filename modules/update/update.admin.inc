@@ -767,10 +767,18 @@ function update_batch_enable_project($project) {
  * return string $path
  */
 function _update_find_info_file($directory) {
-  $fi = new DirectoryIterator($directory);
-  foreach ($fi as $file) {
-    dpr($file);
+  $info_files = file_scan_directory($directory, '/.*\.info/');
+  if (!$info_files) {
+    return FALSE;
   }
+  foreach ($info_files as $info_file) {
+    if (substr($info_file,0, -5) == basename($directory)) {
+      // Has the same name as the directory, is prefered.
+      return $info_file;
+    }
+  }
+  // Return the first one.
+  return array_shift($info_files);
 }
 
 function update_plugin_manager_access() {
