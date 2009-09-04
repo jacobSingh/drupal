@@ -63,7 +63,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
   if (isset($_SESSION['update_batch_results']) && $results = $_SESSION['update_batch_results']) {
     // If this variable is set it means that the user entered FTP details because
     // they needed to chmod the sites/default/* dirs.  We want to set them back.
-    if ($_SESSION['filetransfer_settings']) {
+    if (isset($_SESSION['filetransfer_settings'])) {
       $filetransfer_settings = $_SESSION['filetransfer_settings'];
 
       // This contains the user's sensative credentials, we have to make sure
