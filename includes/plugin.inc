@@ -1,5 +1,12 @@
 <?php
 
+// $Id$
+
+/**
+ * @file
+ * Plugin manager helper functions
+ */
+
 /**
  * Have to explicitly include because the registry is not available to us.
  */

@@ -180,7 +180,7 @@ function update_menu() {
     'type' => MENU_CALLBACK,
     'file' => 'update.admin.inc',
   );
-  
+
   $items['admin/reports/updates/settings'] = array(
     'title' => 'Settings',
     'page callback' => 'drupal_get_form',
@@ -190,7 +190,7 @@ function update_menu() {
     'type' => MENU_LOCAL_TASK,
     'weight' => 50,
   );
-  
+
   $items['admin/reports/updates/check'] = array(
     'title' => 'Manual update check',
     'page callback' => 'update_manual_status',
@@ -234,7 +234,7 @@ function update_menu_alter(&$items) {
 }
 
 /**
- * Implement the hook_theme() registry.
+ * Implements hook_theme().
  */
 function update_theme() {
   return array(

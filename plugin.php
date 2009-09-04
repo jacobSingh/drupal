@@ -70,7 +70,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
       // that it gets unset.
       unset($_SESSION['filetransfer_settings']);
       
-      $filetransfer_backend = variable_get('update_filetransfer_default', null);
+      $filetransfer_backend = variable_get('update_filetransfer_default', NULL);
       $ft = update_get_filetransfer($filetransfer_backend, $filetransfer_settings);
       // This sets the permissions to non-writable for everyone.
       _plugin_manager_create_and_setup_directories($ft, 0755);
@@ -86,7 +86,8 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
     if ($results['success']) {
       variable_set('site_offline', FALSE);
       drupal_set_message(t("Update was completed successfully!  Your site has been taken out of maintenance mode."));
-    } else {
+    }
+    else {
       drupal_set_message(t("Update failed! See the log below for more information. Your site is still in maintenance mode"), 'error');
     }
 
@@ -95,7 +96,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
     drupal_set_title('Update complete');
 
 
-    $links = array (
+    $links = array(
       l('Administration pages', 'admin'),
       l('Front page', '<front>'),
     );

@@ -121,7 +121,8 @@ function _update_update_form_update_table() {
       '#value' => t('Install these updates'),
       '#weight' => 100,
     );
-  } else {
+  }
+  else {
     $form['projects'] = array();
     $form['projects']['#type'] = "markup";
     $form['projects']['#markup'] = theme('table', $headers, $options);
@@ -169,7 +170,7 @@ function _update_update_form_display_steps() {
 /**
  * Submit function for the main update form.
  *
- * @see update_update_form
+ * @see update_update_form()
  */
 function update_update_form_submit($form, &$form_state) {
   global $base_url;
@@ -282,7 +283,7 @@ function update_install_form_submit($form, &$form_state) {
     return;
   }
   
-  $project = substr($files[0]['filename'], 0, -1); // Remove the trailing slash.
+  $project = drupal_substr($files[0]['filename'], 0, -1); // Remove the trailing slash.
 
   // We want to make sure that the project is not already installed.
   // Currently, there is no way to do this :(  Bummer.
@@ -318,9 +319,7 @@ function update_install_form_submit($form, &$form_state) {
 
 /**
  * Batch operations related to installing / updating projects
- *
- **/
-
+ */
 
 /**
  * Batch operation: download a project and put it in a temporary cache.
@@ -706,7 +705,7 @@ function _update_copy_directory($src, $dest) {
     mkdir($dest);
   }
   foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src), RecursiveIteratorIterator::SELF_FIRST) as $filename => $file) {
-    $relative_path = substr($filename, strlen($src));
+    $relative_path = drupal_substr($filename, drupal_strlen($src));
     if ($file->isDir()) {
       mkdir($dest . '/' . $relative_path);
     }
@@ -772,7 +771,7 @@ function _update_find_info_file($directory) {
     return FALSE;
   }
   foreach ($info_files as $info_file) {
-    if (substr($info_file,0, -5) == basename($directory)) {
+    if (drupal_substr($info_file, 0, -5) == basename($directory)) {
       // Has the same name as the directory, is prefered.
       return $info_file;
     }
