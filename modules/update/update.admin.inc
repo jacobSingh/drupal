@@ -276,6 +276,7 @@ function update_install_form_submit($form, &$form_state) {
   watchdog('update', 'Un-tarring ' . drupal_realpath($local_cache));
 
   $a = new Archive_Tar(drupal_realpath($local_cache));
+
   $files = $a->listContent();
   if (!$files) {
     form_set_error($field, t('Provided URL is not a .tar.gz archive', array('%url' => $form_state['values']['url'])));
@@ -301,6 +302,10 @@ function update_install_form_submit($form, &$form_state) {
     ),
   );
 
+  // We expand the archive now, so we can figure out what is in it.
+  $project_location = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
+  update_untar(drupal_realpath($local_cache));
+
   /**
    * Determines the modules which should be enabled by default
    * If there is a project.info file, use that, else use $project.info
@@ -309,50 +314,25 @@ function update_install_form_submit($form, &$form_state) {
   $project_info = NULL;
 
   $type = NULL;
-  // This loop basically figures out the type and the
-  foreach ($files as $file) {
-    // This sucks.  I wish I could use OOP design patterns Project < Theme...
-    if (substr($file, 0, -7) == '.module') {
-      $type = 'module';
-      // This is a module, exciting.
-    }
+  
+  $info_file = _update_find_info_file($project_location);
+  $project_info = drupal_parse_info_file($info_file);
 
-    if ((basename($file)) == 'project.info') {
-      $project_info = drupal_parse_info_file($file);
-    }
-
-    // This is the tradtional .info file when project == module or theme.
-    if ((basename($file)) == "$project.info") {
-      $single_project_info = drupal_parse_info_file($file);
-    }
-  }
-  // If a .module file is not found, we assume this is a theme.
-  if (!$type) {
-    $type == 'theme';
-  }
-
-  if (!$project_info) {
-    $project_info = $single_project_info;
-  }
-
-  switch ($type) {
+  switch (_update_get_project_type_by_directory($project_location)) {
     case 'module':
-      if (!$project_info->default_modules) {
-        $project_info->default_modules = array($project);
+      if (!isset($project_info['default_modules']) && basename($info_file) == "{$project}.info") {
+        $project_info['default_modules'] = array($project);
       }
-      $operations[] = array('update_batch_enable_modules', array($project_info->default_modules));
+      $operations[] = array('update_batch_enable_modules', array($project_info['default_modules']));
       break;
 
     case 'theme':
       $operations[] = array('update_batch_enable_themes', array(array($project)));
       break;
   }
-
-  // @todo: Finish this.
-  $operations[] = array('update_batch_enable_project', array($project_info->default_modules));
   
   $batch = array(
-    'title' => t('Installing %project', array('%project' => $project_info->name)),
+    'title' => t('Installing %project', array('%project' => $project_info['name'])),
     'init_message' => t('Preparing update operation'),
     'operations' => $operations,
     'finished' => 'update_batch_finished',
@@ -362,6 +342,7 @@ function update_install_form_submit($form, &$form_state) {
   $_SESSION['plugin_op'] = $batch;
   drupal_goto(url($base_url . '/plugin.php', array('absolute' => TRUE)));
   return;
+
 }
 
 /**
@@ -395,6 +376,7 @@ function update_batch_get_project($project, &$context) {
     $content['results'][$project][] = t('Failed to download %project', array('%project' => $project));
   }
 }
+
 
 /**
  * Batch operation: copy a project to it's proper place.
@@ -803,8 +785,9 @@ function update_batch_enable_themes($themes, &$context) {
  */
 function update_batch_enable_modules($modules, &$context) {
   foreach ($modules as $module) {
-    module_enable($project);
-    _update_batch_create_message($context['results'][$project], t("%project has been enabled", array('%project' => $module)), FALSE);
+    module_enable(array($module));
+
+    _update_batch_create_message($context['results'][$project], t("%project has been enabled", array('%project' => $module)));
   }
 }
 
@@ -816,6 +799,11 @@ function update_batch_enable_modules($modules, &$context) {
  * return string $path
  */
 function _update_find_info_file($directory) {
+
+  if ($project_info_files = file_scan_directory($directory, '/\.project\.info/')) {
+    return $project_info_files[0];
+  }
+
   $info_files = file_scan_directory($directory, '/.*\.info/');
   if (!$info_files) {
     return FALSE;
