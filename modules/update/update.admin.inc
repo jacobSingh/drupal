@@ -281,18 +281,18 @@ function update_install_form_submit($form, &$form_state) {
     form_set_error($field, t('Provided URL is not a .tar.gz archive', array('%url' => $form_state['values']['url'])));
     return;
   }
-  
+
+  // @TODO: This should use the project.info file stuff probably
+  // This is not reliable (the directory name)
   $project = drupal_substr($files[0]['filename'], 0, -1); // Remove the trailing slash.
 
-  // We want to make sure that the project is not already installed.
-  // Currently, there is no way to do this :(  Bummer.
-  if (drupal_get_path('module', $project)) {
+  // I am already installed
+  if (_update_get_project_location($project)) {
     form_set_error($field, t('%project is already installed', array('%project' => $project)));
     return;
   }
 
   $operations = array();
-  
   $operations[] = array(
     'update_batch_copy_project',
     array(
@@ -300,17 +300,65 @@ function update_install_form_submit($form, &$form_state) {
       $local_cache,
     ),
   );
-  // @todo: Finish this.
-  //$operations[] = array('update_batch_enable_project', array($project));
 
+  /**
+   * Determines the modules which should be enabled by default
+   * If there is a project.info file, use that, else use $project.info
+   * (i.e. views.info)
+   */
+  $project_info = NULL;
+
+  $type = NULL;
+  // This loop basically figures out the type and the
+  foreach ($files as $file) {
+    // This sucks.  I wish I could use OOP design patterns Project < Theme...
+    if (substr($file, 0, -7) == '.module') {
+      $type = 'module';
+      // This is a module, exciting.
+    }
+
+    if ((basename($file)) == 'project.info') {
+      $project_info = drupal_parse_info_file($file);
+    }
+
+    // This is the tradtional .info file when project == module or theme.
+    if ((basename($file)) == "$project.info") {
+      $single_project_info = drupal_parse_info_file($file);
+    }
+  }
+  // If a .module file is not found, we assume this is a theme.
+  if (!$type) {
+    $type == 'theme';
+  }
+
+  if (!$project_info) {
+    $project_info = $single_project_info;
+  }
+
+  switch ($type) {
+    case 'module':
+      if (!$project_info->default_modules) {
+        $project_info->default_modules = array($project);
+      }
+      $operations[] = array('update_batch_enable_modules', array($project_info->default_modules));
+      break;
+
+    case 'theme':
+      $operations[] = array('update_batch_enable_themes', array(array($project)));
+      break;
+  }
+
+  // @todo: Finish this.
+  $operations[] = array('update_batch_enable_project', array($project_info->default_modules));
+  
   $batch = array(
-    'title' => t('Installing %project', array('%project' => $project)),
+    'title' => t('Installing %project', array('%project' => $project_info->name)),
     'init_message' => t('Preparing update operation'),
     'operations' => $operations,
     'finished' => 'update_batch_finished',
     'file' => drupal_get_path('module', 'update') . '/update.admin.inc',
   );
-
+  
   $_SESSION['plugin_op'] = $batch;
   drupal_goto(url($base_url . '/plugin.php', array('absolute' => TRUE)));
   return;
@@ -388,14 +436,13 @@ function update_batch_copy_project($project, $url, &$context) {
   $dependencies = _update_check_dependencies($info_file);
   //@TODO: Not yet implemented
 
-  if ($project_info = _update_get_project_type_and_location($project)) {
+  if ($location = _update_get_project_location($project)) {
     // This is an update
     $is_install = FALSE;
-    $location = $project_info['location'];
   }
   else {
     //This is a fresh install, not an update
-    $type = _update_get_project_type($project_source_dir);
+    $type = _update_get_project_type_by_directory($project_source_dir);
     if (!$type) {
       _update_batch_create_message($context['results'][$project], t("Unable to determine project type for %name", array("%name" => $project)), FALSE);
       $context['results'][$project]['#abort'] = TRUE;
@@ -438,8 +485,8 @@ function update_batch_update_project($project, &$context) {
     $context['#finished'] = 1;
     return;
   }
-  $project_info = _update_get_project_type_and_location($project);
-  if ($project_info['type'] != 'module') {
+  
+  if (_update_get_project_type($project) != 'module') {
     $context['finished'] = 1;
     return;
   }
@@ -494,13 +541,6 @@ function theme_update_available_updates_form($form) {
 }
 
 /**
-
- * Previously update.module
- *
- */
-
-
-/**
  * Untar a file, using the Archive_Tar class.
  *
  * @param string $file the filename you wish to extract
@@ -550,19 +590,29 @@ function _update_get_project_type_and_location($name) {
   return FALSE;
 }
 
+function _update_get_project_type($name) {
+  $project_info = _update_get_project_type_and_location($name);
+  return $project_info['type'];
+}
+
+function _update_get_project_location($name) {
+  $project_info = _update_get_project_type_and_location($name);
+  return $project_info['location'];
+}
+
 /**
  * Get's the latest release of a project
  *
- * @param string $name Name of the project
+ * @param string $project Name of the project
  * @return array An array of information about the latest recommended
  * release of the project
  */
-function _update_get_latest_version($name) {
+function _update_get_latest_version($project) {
   if ($available = update_get_available(FALSE)) {
     module_load_include('inc', 'update', 'update.compare');
-    $project_data = update_calculate_project_data($available);
-    $project = $project_data[$name];
-    return $project['releases'][$project['latest_version']];
+    $projects_data = update_calculate_project_data($available);
+    $project_data = $projects_data[$project];
+    return $project_data['releases'][$project_data['latest_version']];
   }
 }
 
@@ -575,8 +625,8 @@ function _update_get_latest_version($name) {
 function _update_get_schema_updates($project) {
   require_once './includes/install.inc';
   require_once './includes/update.inc';
-  $module_info = _update_get_project_type_and_location($project);
-  if ($module_info['type'] != 'module') {
+  
+  if (_update_get_project_type($project) != 'module') {
     return array();
   }
   module_load_include('install', $project);
@@ -601,7 +651,7 @@ function _update_get_schema_updates($project) {
  *
  * @return string project type, could be theme or module.
  */
-function _update_get_project_type($project_directory) {
+function _update_get_project_type_by_directory($project_directory) {
   if (file_scan_directory($project_directory, '/.*\.module/')) {
     return 'module';
   }
@@ -736,23 +786,25 @@ function _update_remove_directory($src, $jail = DRUPAL_ROOT) {
 
 /**
  *
- * Should enable a theme or a module with the same name as the project.
- * In the future, project-wise info files are recommended which could specify
- * the modules to install by default inside the project
+ * Enable an array of themes
  *
  * @TODO: This is not implemented yet.  Just a stub
  * @param <type> $project
  * @return <type>
  */
-function update_batch_enable_project($project) {
-  return;
+function update_batch_enable_themes($themes, &$context) {
+  // @todo: Enable the theme.  Would be ideal to prompt post install
+  // if it should be default as well.
+}
 
-  if (_update_get_project_type() == 'theme') {
-    // @todo: Enable the theme.  Would be ideal to prompt post install
-    // if it should be default as well.
-  }
-  else {
+/**
+ * Enable an array of modules
+ * @param <type> $modules
+ */
+function update_batch_enable_modules($modules, &$context) {
+  foreach ($modules as $module) {
     module_enable($project);
+    _update_batch_create_message($context['results'][$project], t("%project has been enabled", array('%project' => $module)), FALSE);
   }
 }
 
