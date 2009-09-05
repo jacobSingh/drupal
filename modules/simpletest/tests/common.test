@@ -1,5 +1,5 @@
 <?php
-// $Id: common.test,v 1.69 2009-08-25 21:16:31 webchick Exp $
+// $Id: common.test,v 1.71 2009-09-05 15:05:04 dries Exp $
 
 /**
  * Tests for the l() function.
@@ -601,6 +601,43 @@ class DrupalSetContentTestCase extends DrupalWebTestCase {
 }
 
 /**
+ * Testing drupal_goto and hook_drupal_goto_alter().
+ */
+class DrupalGotoTest extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Drupal goto',
+      'description' => 'Performs tests on the drupal_goto function and hook_drupal_goto_alter',
+      'group' => 'System'
+    );
+  }
+
+  function setUp() {
+    parent::setUp('common_test');
+  }
+
+  /**
+   * Test setting and retrieving content for theme regions.
+   */
+  function testDrupalGoto() {
+    $this->drupalGet('common-test/drupal_goto/redirect');
+
+    $this->assertNoText(t("Drupal goto failed to stop program"), t("Drupal goto stopped program."));
+    $this->assertText('drupal_goto', t("Drupal goto redirect failed."));
+  }
+
+  /**
+   * Test setting and retrieving content for theme regions.
+   */
+  function testDrupalGotoAlter() {
+    $this->drupalGet('common-test/drupal_goto/redirect_fail');
+
+    $this->assertNoText(t("Drupal goto failed to stop program"), t("Drupal goto stopped program."));
+    $this->assertNoText('drupal_goto_fail', t("Drupal goto redirect failed."));
+  }
+}
+
+/**
  * Tests for the JavaScript system.
  */
 class JavaScriptTestCase extends DrupalWebTestCase {
@@ -859,14 +896,10 @@ class JavaScriptTestCase extends DrupalWebTestCase {
   }
 
   /**
-   * Tests the addition of libraries through the #attached_library property.
+   * Tests the addition of libraries through the #attached['library'] property.
    */
   function testAttachedLibrary() {
-    $element = array(
-      '#attached_library' => array(
-        array('system', 'farbtastic'),
-      )
-    );
+    $element['#attached']['library'][] = array('system', 'farbtastic');
     drupal_render($element);
     $scripts = drupal_get_js();
     $this->assertTrue(strpos($scripts, 'misc/farbtastic/farbtastic.js'), t('The attached_library property adds the additional libraries.'));

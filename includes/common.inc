@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.982 2009-09-05 10:05:38 dries Exp $
+// $Id: common.inc,v 1.984 2009-09-05 15:05:01 dries Exp $
 
 /**
  * @file
@@ -422,6 +422,14 @@ function drupal_goto($path = '', $query = NULL, $fragment = NULL, $http_response
   if (isset($_REQUEST['destination'])) {
     extract(parse_url(urldecode($_REQUEST['destination'])));
   }
+
+  $args = array(
+    'path' => &$path,
+    'query' => &$query,
+    'fragment' => &$fragment,
+    'http_response_code' => &$http_response_code,
+  );
+  drupal_alter('drupal_goto', $args);
 
   $url = url($path, array('query' => $query, 'fragment' => $fragment, 'absolute' => TRUE));
 
@@ -2147,6 +2155,11 @@ function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
  *   - 'language'
  *       An optional language object. Used to build the URL to link to and
  *       look up the proper alias for the link.
+ *   - 'https'
+ *       Whether this URL should point to a secure location. If not specified,
+ *       the current scheme is used, so the user stays on http or https
+ *       respectively. TRUE enforces HTTPS and FALSE enforces HTTP, but HTTPS
+ *       can only be enforced when the variable 'https' is set to TRUE.
  *   - 'base_url'
  *       Only used internally, to modify the base URL when a language dependent
  *       URL requires so.
@@ -2166,6 +2179,7 @@ function url($path = NULL, array $options = array()) {
     'query' => '',
     'absolute' => FALSE,
     'alias' => FALSE,
+    'https' => FALSE,
     'prefix' => ''
   );
   if (!isset($options['external'])) {
@@ -2203,7 +2217,7 @@ function url($path = NULL, array $options = array()) {
     return $path . $options['fragment'];
   }
 
-  global $base_url;
+  global $base_url, $base_secure_url, $base_insecure_url;
   $script = &drupal_static(__FUNCTION__);
 
   if (!isset($script)) {
@@ -2213,9 +2227,21 @@ function url($path = NULL, array $options = array()) {
     $script = (strpos($_SERVER['SERVER_SOFTWARE'], 'Apache') === FALSE) ? 'index.php' : '';
   }
 
+  // The base_url might be rewritten from the language rewrite in domain mode.
   if (!isset($options['base_url'])) {
-    // The base_url might be rewritten from the language rewrite in domain mode.
-    $options['base_url'] = $base_url;
+    if (isset($options['https']) && variable_get('https', FALSE)) {
+      if ($options['https'] === TRUE) {
+        $options['base_url'] = $base_secure_url;
+        $options['absolute'] = TRUE;
+      }
+      elseif ($options['https'] === FALSE) {
+        $options['base_url'] = $base_insecure_url;
+        $options['absolute'] = TRUE;
+      }
+    }
+    else {
+      $options['base_url'] = $base_url;
+    }
   }
 
   // Preserve the original path before aliasing.
@@ -3177,14 +3203,31 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
 }
 
 /**
- * Adds all the attached libraries, JavaScript and CSS to the page.
+ * Add to the page all structures attached to a render() structure.
  *
- * @param $libraries
- *   An array of depending libraries to be added.
- * @param $js
- *   An array of JavaScript components to add.
- * @param $css
- *   An array of cascading stylesheets to add.
+ * Libraries, JavaScript, CSS and other types of custom structures are attached
+ * to elements using the #attached property. The #attached property contains an
+ * associative array, where the keys are the the types of the structure, and
+ * the value the attached data. For example:
+ * @code
+ * $build['#attached'] = array(
+ *   'js' => array(drupal_get_path('module', 'taxonomy') . '/taxonomy.js'),
+ *   'css' => array(drupal_get_path('module', 'taxonomy') . '/taxonomy.css'),
+ * );
+ * @endcode
+ *
+ * 'js', 'css', and 'library' are types that get special handling.  For any
+ * other kind of attached data, the array key must be the full name of the
+ * callback function and each value an array of arguments. For example:
+ *
+ * @code
+ * $build['#attached']['drupal_set_header'] = array(
+ *   array('Content-Type', 'application/rss+xml; charset=utf-8'),
+ * );
+ * @endcode
+ *
+ * @param $elements
+ *   The structured array describing the data being rendered.
  * @param $weight
  *   The default weight of JavaScript and CSS being added. This is only applied
  *   to the stylesheets and JavaScript items that don't have an explicit weight
@@ -3197,12 +3240,26 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
  *   Will return FALSE if there were any missing library dependencies. TRUE will
  *   be returned if all library dependencies were met.
  *
- * @see drupal_add_library(), drupal_render()
+ * @see drupal_add_library().
+ * @see drupal_add_js().
+ * @see drupal_add_css().
+ * @see drupal_render().
  */
-function drupal_process_attached(array $libraries = array(), array $js = array(), array $css = array(), $weight = JS_DEFAULT, $dependency_check = FALSE) {
+function drupal_process_attached($elements, $weight = JS_DEFAULT, $dependency_check = FALSE) {
+  // If there is nothing to process then return. 
+  if (empty($elements['#attached'])) {
+    return;
+  }
+  // Add defaults to the special attached structures that should be processed differently.
+  $elements['#attached'] += array(
+    'library' => array(),
+    'js' => array(),
+    'css' => array(),
+  );
+
   // Add the libraries first.
   $success = TRUE;
-  foreach ($libraries as $library) {
+  foreach ($elements['#attached']['library'] as $library) {
     if (drupal_add_library($library[0], $library[1]) === FALSE) {
       $success = FALSE;
       // Exit if the dependency is missing.
@@ -3211,10 +3268,13 @@ function drupal_process_attached(array $libraries = array(), array $js = array()
       }
     }
   }
+  unset($elements['#attached']['library']);
 
   // Add both the JavaScript and the CSS.
-  foreach (array('js' => $js, 'css' => $css) as $type => $items) {
-    foreach ($items as $data => $options) {
+  // The parameters for drupal_add_js() and drupal_add_css() require special
+  // handling.
+  foreach (array('js', 'css') as $type) {
+    foreach ($elements['#attached'][$type] as $data => $options) {
       // If the value is not an array, it's a filename and passed as first
       // (and only) argument.
       if (!is_array($options)) {
@@ -3233,7 +3293,20 @@ function drupal_process_attached(array $libraries = array(), array $js = array()
       }
       call_user_func('drupal_add_' . $type, $data, $options);
     }
+    unset($elements['#attached'][$type]);
   }
+
+  // Add additional types of attachments specified in the render() structure.
+  // Libraries, Javascript and CSS have been added already, as they require
+  // special handling.
+  foreach ($elements['#attached'] as $callback => $options) {
+    if (function_exists($callback)) {
+      foreach ($elements['#attached'][$callback] as $args) {
+        call_user_func_array($callback, $args);
+      }
+    }
+  }
+
   return $success;
 }
 
@@ -3266,7 +3339,12 @@ function drupal_add_library($module, $name) {
   if (!isset($added[$module][$name])) {
     if ($library = drupal_get_library($module, $name)) {
       // Add all components within the library.
-      $added[$module][$name] = drupal_process_attached($library['dependencies'], $library['js'], $library['css'], JS_LIBRARY, TRUE);
+      $elements['#attached'] = array(
+        'library' => $library['dependencies'],
+        'js' => $library['js'],
+        'css' => $library['css'],
+      );
+      $added[$module][$name] = drupal_process_attached($elements, JS_LIBRARY, TRUE);
     }
     else {
       // Requested library does not exist.
@@ -4115,12 +4193,9 @@ function drupal_render(&$elements) {
     }
   }
 
-  // Add additional libraries, CSS and JavaScript associated with this element.
-  drupal_process_attached(
-    isset($elements['#attached_library']) ? $elements['#attached_library'] : array(),
-    isset($elements['#attached_js']) ? $elements['#attached_js'] : array(),
-    isset($elements['#attached_css']) ? $elements['#attached_css'] : array()
-  );
+  // Add additional libraries, CSS, JavaScript an other custom
+  // attached data associated with this element.
+  drupal_process_attached($elements);
 
   $prefix = isset($elements['#prefix']) ? $elements['#prefix'] : '';
   $suffix = isset($elements['#suffix']) ? $elements['#suffix'] : '';
@@ -4226,12 +4301,9 @@ function drupal_render_cache_get($elements) {
   $bin = isset($elements['#cache']['bin']) ? $elements['#cache']['bin'] : 'cache';
 
   if (!empty($cid) && $cache = cache_get($cid, $bin)) {
-    // Add additional libraries, CSS and JavaScript associated with this element.
-    drupal_process_attached(
-      isset($cache->data['#attached_library']) ? $cache->data['#attached_library'] : array(),
-      isset($cache->data['#attached_js']) ? $cache->data['#attached_js'] : array(),
-      isset($cache->data['#attached_css']) ? $cache->data['#attached_css'] : array()
-    );
+    // Add additional libraries, JavaScript, CSS and other data attached
+    // to this element.
+    drupal_process_attached($cache->data);
     // Return the rendered output.
     return $cache->data['#markup'];;
   }
@@ -4258,12 +4330,8 @@ function drupal_render_cache_set($markup, $elements) {
   }
 
   $data['#markup'] = $markup;
-  // Persist additional CSS and JavaScript files associated with this element.
-  foreach (array('css', 'js', 'library') as $kind) {
-    if (!empty($elements['#attached_' . $kind])) {
-      $data['#attached_' . $kind] = $elements['#attached_' . $kind];
-    }
-  }
+  // Persist attached data associated with this element.
+  $data['#attached'] = $elements['#attached'];
   $bin = isset($elements['#cache']['bin']) ? $elements['#cache']['bin'] : 'cache';
   $expire = isset($elements['#cache']['expire']) ? $elements['#cache']['expire'] : CACHE_PERMANENT;
   cache_set($cid, $data, $bin, $expire);
@@ -4386,6 +4454,7 @@ function element_basic_defaults() {
     '#title' => '',
     '#attributes' => array(),
     '#required' => FALSE,
+    '#attached' => array(),
   );
 }
 

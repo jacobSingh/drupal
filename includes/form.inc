@@ -1,5 +1,5 @@
 <?php
-// $Id: form.inc,v 1.368 2009-08-29 16:30:14 webchick Exp $
+// $Id: form.inc,v 1.370 2009-09-05 15:05:01 dries Exp $
 
 /**
  * @defgroup forms Form builder functions
@@ -979,6 +979,14 @@ function form_builder($form_id, $element, &$form_state) {
 
   // Special handling if we're on the top level form element.
   if (isset($element['#type']) && $element['#type'] == 'form') {
+    if (!empty($element['#https']) && variable_get('https', FALSE) &&
+        !menu_path_is_external($element['#action'])) {
+      global $base_root;
+
+      // Not an external URL so ensure that it is secure.
+      $element['#action'] = str_replace('http://', 'https://', $base_root) . $element['#action'];
+    }
+
     // Store a complete copy of the form in form_state prior to building the form.
     $form_state['complete form'] = $element;
     // Set a flag if we have a correct form submission. This is always TRUE for
@@ -2245,9 +2253,9 @@ function form_process_fieldset(&$element, &$form_state) {
   $element['#group_members'] = &$form_state['groups'][$parents];
 
   // Contains form element summary functionalities.
-  $element['#attached_js']['misc/form.js'] = array('weight' => JS_LIBRARY + 1);
+  $element['#attached']['js']['misc/form.js'] = array('weight' => JS_LIBRARY + 1);
   if (!empty($element['#collapsible'])) {
-    $element['#attached_js']['misc/collapse.js'] = array();
+    $element['#attached']['js'][] = 'misc/collapse.js';
   }
 
   return $element;
