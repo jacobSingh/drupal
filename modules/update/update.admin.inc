@@ -400,10 +400,9 @@ function update_batch_copy_project($project, $url, &$context) {
     return;
   }
 
-  watchdog('update', $url);
   $local_cache = update_get_file($url);
-  watchdog('update', $local_cache);
-  //this extracts the file into the standard place.
+  
+  // This extracts the file into the standard place.
   try {
     update_untar($local_cache);
   } catch (Exception $e) {
