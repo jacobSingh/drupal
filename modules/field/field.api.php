@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.31 2009-08-27 00:33:51 webchick Exp $
+// $Id: field.api.php,v 1.34 2009-09-10 06:31:38 dries Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -603,7 +603,7 @@ function hook_field_widget_info_alter(&$info) {
  * Return a single form element for a form.
  *
  * It will be built out and validated in the callback(s) listed in
- * hook_elements. We build it out in the callbacks rather than in
+ * hook_element_info(). We build it out in the callbacks rather than in
  * hook_field_widget so it can be plugged into any module that can
  * provide it with valid $field information.
  *
@@ -663,14 +663,25 @@ function hook_field_widget_error($element, $error) {
  * of drupal_render() on the render structure built by field_attach_view().
  *
  * The name of the theme hook invoked when displaying the values is derived
- * from formatter type names, following the pattern:
- * field_formatter_FORMATTER_NAME
- * The module implementing the formatters needs to register those theme hooks
- * using hook_theme().
+ * from formatter type names, using the pattern field_formatter_FORMATTER_NAME.
+ * field.module takes care of exposing the corresponding theme functions
+ * through hook_theme().  Specifically, field.module defines the theme
+ * hook:
+ *
+ * @code
+ *   'field_formatter_FORMATTER_NAME' => array(
+ *     'arguments' => array('element' => NULL),
+ *   )
+ * @code
+ *
+ * If a formatter requires a different theme hook definition,
+ * implement hook_theme_registry_alter().
  *
  * @see hook_field_formatter_info().
  * @see hook_field_formatter_info_alter().
  * @see theme_field_formatter_FORMATTER_NAME().
+ * @see hook_theme().
+ * @see hook_theme_registry_alter().
  *
  * @return
  *   An array describing the formatter types implemented by the module.
@@ -1265,16 +1276,13 @@ function hook_field_create_instance($instance) {
 /**
  * Act on a field being deleted.
  *
- * This hook is invoked just before the field is deleted.
- *
- * TODO: Not implemented.
+ * This hook is invoked just after field is deleted.
  *
  * @param $field
- *   The field being deleted.
+ *   The field just deleted.
  */
 function hook_field_delete_field($field) {
 }
-
 
 /**
  * Act on a field instance being updated.
@@ -1293,12 +1301,10 @@ function hook_field_update_instance($instance) {
 /**
  * Act on a field instance being deleted.
  *
- * This hook is invoked just before the instance is deleted.
- *
- * TODO: Not implemented.
+ * This hook is invoked just after the instance is deleted.
  *
  * @param $instance
- *   The instance just updated.
+ *   The instance just deleted.
  */
 function hook_field_delete_instance($instance) {
 }

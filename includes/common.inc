@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.984 2009-09-05 15:05:01 dries Exp $
+// $Id: common.inc,v 1.992 2009-09-18 10:54:20 dries Exp $
 
 /**
  * @file
@@ -578,11 +578,13 @@ function drupal_http_request($url, array $options = array()) {
 
   if ($uri == FALSE) {
     $result->error = 'unable to parse URL';
+    $result->code = -1001;
     return $result;
   }
 
   if (!isset($uri['scheme'])) {
     $result->error = 'missing schema';
+    $result->code = -1002;
     return $result;
   }
 
@@ -611,6 +613,7 @@ function drupal_http_request($url, array $options = array()) {
       break;
     default:
       $result->error = 'invalid schema ' . $uri['scheme'];
+      $result->code = -1003;
       return $result;
   }
 
@@ -878,7 +881,7 @@ function _drupal_decode_exception($exception) {
     // The first element in the stack is the call, the second element gives us the caller.
     // We skip calls that occurred in one of the classes of the database layer
     // or in one of its global functions.
-    $db_functions = array('db_query', 'pager_query', 'db_query_range', 'db_query_temporary', 'update_sql');
+    $db_functions = array('db_query',  'db_query_range', 'update_sql');
     while (!empty($backtrace[1]) && ($caller = $backtrace[1]) &&
         ((isset($caller['class']) && (strpos($caller['class'], 'Query') !== FALSE || strpos($caller['class'], 'Database') !== FALSE || strpos($caller['class'], 'PDO') !== FALSE)) ||
         in_array($caller['function'], $db_functions))) {
@@ -4126,7 +4129,7 @@ function drupal_render(&$elements) {
   }
 
   // Try to fetch the element's markup from cache and return.
-  if ($cached_output = drupal_render_cache_get($elements)) {
+  if (isset($elements['#cache']) && $cached_output = drupal_render_cache_get($elements)) {
     return $cached_output;
   }
 
@@ -4424,25 +4427,16 @@ function element_info($type) {
 
   if (!isset($cache)) {
     $basic_defaults = element_basic_defaults();
-    $cache = array();
-
-    foreach (module_implements('elements') as $module) {
-      $elements = module_invoke($module, 'elements');
-      if (isset($elements) && is_array($elements)) {
-        $cache = array_merge_recursive($cache, $elements);
-      }
-    }
-    if (!empty($cache)) {
-      foreach ($cache as $element_type => $info) {
-        $cache[$element_type] = array_merge_recursive($basic_defaults, $info);
-        $cache[$element_type]['#type'] = $element_type;
-      }
+    $cache = module_invoke_all('element_info');
+    foreach ($cache as $element_type => $info) {
+      $cache[$element_type] = array_merge_recursive($basic_defaults, $info);
+      $cache[$element_type]['#type'] = $element_type;
     }
     // Allow modules to alter the element type defaults.
     drupal_alter('element_info', $cache);
   }
 
-  return $cache[$type];
+  return isset($cache[$type]) ? $cache[$type] : array();
 }
 
 /**
@@ -4541,6 +4535,10 @@ function drupal_common_theme() {
     'placeholder' => array(
       'arguments' => array('text' => NULL)
     ),
+    'html' => array(
+      'arguments' => array('page' => NULL),
+      'template' => 'html',
+    ),
     'page' => array(
       'arguments' => array('page' => NULL),
       'template' => 'page',
@@ -4636,14 +4634,11 @@ function drupal_common_theme() {
       'arguments' => array('form' => NULL),
     ),
     // from menu.inc
-    'menu_item_link' => array(
-      'arguments' => array('item' => NULL),
+    'menu_link' => array(
+      'arguments' => array('element' => NULL),
     ),
     'menu_tree' => array(
       'arguments' => array('tree' => NULL),
-    ),
-    'menu_item' => array(
-      'arguments' => array('link' => NULL, 'has_children' => NULL, 'menu' => ''),
     ),
     'menu_local_task' => array(
       'arguments' => array('link' => NULL, 'active' => FALSE),
@@ -4807,9 +4802,10 @@ function drupal_get_schema_unprocessed($module, $table = NULL) {
   if (!is_null($table) && isset($schema[$table])) {
     return $schema[$table];
   }
-  else {
+  else if (!empty($schema)) {
     return $schema;
   }
+  return array();
 }
 
 /**
@@ -5229,7 +5225,7 @@ function drupal_flush_all_caches() {
   }
 
   drupal_theme_rebuild();
-  // Rebuild content types, menu will be rebuilt as well.
+  menu_rebuild();
   node_types_rebuild();
   // Don't clear cache_form - in-progress form submissions may break.
   // Ordered so clearing the page cache will always be the last action.

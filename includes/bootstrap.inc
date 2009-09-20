@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.303 2009-09-05 13:05:30 dries Exp $
+// $Id: bootstrap.inc,v 1.305 2009-09-19 10:38:47 dries Exp $
 
 /**
  * @file
@@ -164,21 +164,20 @@ define('DRUPAL_KILOBYTE', 1024);
 define('LANGUAGE_NEGOTIATION_NONE', 0);
 
 /**
- * Path based negotiation with fallback to default language
- * if no defined path prefix identified.
+ * Path based negotiation with fallback to default language if no defined path
+ * prefix identified.
  */
 define('LANGUAGE_NEGOTIATION_PATH_DEFAULT', 1);
 
 /**
- * Path based negotiation with fallback to user preferences
- * and browser language detection if no defined path prefix
- * identified.
+ * Path based negotiation with fallback to user preferences and browser
+ * language detection if no defined path prefix identified.
  */
 define('LANGUAGE_NEGOTIATION_PATH', 2);
 
 /**
- * Domain based negotiation with fallback to default language
- * if no language identified by domain.
+ * Domain based negotiation with fallback to default language if no language
+ * identified by domain.
  */
 define('LANGUAGE_NEGOTIATION_DOMAIN', 3);
 
@@ -229,9 +228,8 @@ define('REGISTRY_WRITE_LOOKUP_CACHE', 2);
 
 
 /**
- * Start the timer with the specified name. If you start and stop
- * the same timer multiple times, the measured intervals will be
- * accumulated.
+ * Start the timer with the specified name. If you start and stop the same
+ * timer multiple times, the measured intervals will be accumulated.
  *
  * @param name
  *   The name of the timer.
@@ -271,9 +269,8 @@ function timer_read($name) {
  * @param name
  *   The name of the timer.
  * @return
- *   A timer array. The array contains the number of times the
- *   timer has been started and stopped (count) and the accumulated
- *   timer value in ms (time).
+ *   A timer array. The array contains the number of times the timer has been
+ *   started and stopped (count) and the accumulated timer value in ms (time).
  */
 function timer_stop($name) {
   global $timers;
@@ -434,7 +431,7 @@ function drupal_override_server_variables($variables = array()) {
     'REMOTE_ADDR' => '127.0.0.1',
     'REQUEST_METHOD' => 'GET',
     'SERVER_NAME' => NULL,
-    'SERVER_SOFTWARE' => 'PHP CLI',
+    'SERVER_SOFTWARE' => NULL,
     'HTTP_USER_AGENT' => NULL,
   );
   // Replace elements of the $_SERVER array, as appropriate.
@@ -790,7 +787,7 @@ function drupal_page_is_cacheable($allow_caching = NULL) {
   }
 
   return $allow_caching_static && ($_SERVER['REQUEST_METHOD'] == 'GET' || $_SERVER['REQUEST_METHOD'] == 'HEAD')
-    && $_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI';
+    && !drupal_is_cli();
 }
 
 /**
@@ -1549,7 +1546,7 @@ function _drupal_bootstrap($phase) {
       require_once DRUPAL_ROOT . '/' . variable_get('lock_inc', 'includes/lock.inc');
       lock_initialize();
 
-      if ($_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
+      if (!drupal_is_cli()) {
         ob_start();
         drupal_page_header();
       }
@@ -2001,4 +1998,11 @@ function &drupal_static($name, $default_value = NULL, $reset = FALSE) {
  */
 function drupal_static_reset($name = NULL) {
   drupal_static($name, NULL, TRUE);
+}
+
+/**
+ * Detect whether the current script is running in a command-line environment.
+ */
+function drupal_is_cli() {
+  return (!isset($_SERVER['SERVER_SOFTWARE']) && (php_sapi_name() == 'cli' || (is_numeric($_SERVER['argc']) && $_SERVER['argc'] > 0)));
 }

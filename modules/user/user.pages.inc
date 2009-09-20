@@ -1,5 +1,5 @@
 <?php
-// $Id: user.pages.inc,v 1.50 2009-08-31 18:18:44 webchick Exp $
+// $Id: user.pages.inc,v 1.53 2009-09-18 00:12:48 webchick Exp $
 
 /**
  * @file
@@ -12,7 +12,7 @@
 function user_autocomplete($string = '') {
   $matches = array();
   if ($string) {
-    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:name)", array(':name' => $string . '%'), 0, 10);
+    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:name)", 0, 10, array(':name' => $string . '%'));
     foreach ($result as $user) {
       $matches[$user->name] = check_plain($user->name);
     }
@@ -75,7 +75,7 @@ function user_pass_submit($form, &$form_state) {
 /**
  * Menu callback; process one time login link and redirects to the user page on success.
  */
-function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action = NULL) {
+function user_pass_reset($form, &$form_state, $uid, $timestamp, $hashed_pass, $action = NULL) {
   global $user;
 
   // When processing the one-time login link, we have to make sure that a user
@@ -160,39 +160,6 @@ function user_logout() {
 }
 
 /**
- * Menu callback; Displays a user or user profile page.
- *
- * The $page['content'] array for user profile pages contains:
- *
- * - $page['content']['Profile Category']:
- *   Profile categories keyed by their human-readable names.
- * - $page['content']['Profile Category']['profile_machine_name']:
- *   Profile fields keyed by their machine-readable names.
- * - $page['content']['user_picture']:
- *   User's rendered picture.
- * - $page['content']['summary']:
- *   Contains the default "History" profile data for a user.
- * - $page['content']['#account']:
- *   The user account of the profile being viewed.
- *
- * To theme user profiles, copy modules/user/user-profile.tpl.php
- * to your theme directory, and edit it as instructed in that file's comments.
- */
-function user_view($account) {
-  drupal_set_title($account->name);
-  // Retrieve all profile fields and attach to $account->content.
-  user_build_content($account);
-
-  $build = $account->content;
-  $build += array(
-    '#theme' => 'user_profile',
-    '#account' => $account,
-  );
-
-  return $build;
-}
-
-/**
  * Process variables for user-profile.tpl.php.
  *
  * The $variables array contains the following arguments:
@@ -202,7 +169,10 @@ function user_view($account) {
  */
 function template_preprocess_user_profile(&$variables) {
   $account = $variables['elements']['#account'];
-  $variables['user_profile'] = $account->content;
+  // Helpful $user_profile variable for templates.
+  foreach (element_children($variables['elements']) as $key) {
+    $variables['user_profile'][$key] = $variables['elements'][$key];
+  }
 }
 
 /**
@@ -255,7 +225,7 @@ function user_edit($account, $category = 'account') {
  * @see user_profile_form_submit()
  * @see user_cancel_confirm_form_submit()
  */
-function user_profile_form($form_state, $account, $category = 'account') {
+function user_profile_form($form, $form_state, $account, $category = 'account') {
   global $user;
 
   $edit = (empty($form_state['values'])) ? (array)$account : $form_state['values'];
@@ -336,7 +306,7 @@ function user_edit_cancel_submit($form, &$form_state) {
  * @ingroup forms
  * @see user_edit_cancel_submit()
  */
-function user_cancel_confirm_form(&$form_state, $account) {
+function user_cancel_confirm_form($form, &$form_state, $account) {
   global $user;
 
   $form['_account'] = array('#type' => 'value', '#value' => $account);
@@ -481,7 +451,6 @@ function user_cancel_methods() {
 
   // Turn all methods into real form elements.
   $default_method = variable_get('user_cancel_method', 'user_cancel_block');
-  $form = array();
   foreach ($methods as $name => $method) {
     $form[$name] = array(
       '#type' => 'radio',

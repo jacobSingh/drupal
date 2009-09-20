@@ -1,5 +1,5 @@
 <?php
-// $Id: field.crud.inc,v 1.27 2009-08-22 00:58:52 webchick Exp $
+// $Id: field.crud.inc,v 1.31 2009-09-11 03:42:34 webchick Exp $
 
 /**
  * @file
@@ -231,10 +231,21 @@ function field_create_field($field) {
 
   // Ensure the field name is unique over active and disabled fields.
   // We do not care about deleted fields.
-  // TODO : do we want specific messages when clashing with a disabled or inactive field ?
   $prior_field = field_read_field($field['field_name'], array('include_inactive' => TRUE));
   if (!empty($prior_field)) {
-    throw new FieldException(t('Attempt to create field name %name which already exists.', array('%name' => $field['field_name'])));
+    $message = $prior_field['active']?
+      t('Attempt to create field name %name which already exists and is active.', array('%name' => $field['field_name'])):
+      t('Attempt to create field name %name which already exists, although it is inactive.', array('%name' => $field['field_name']));
+    throw new FieldException($message);
+  }
+
+  // Disallow reserved field names. This can't prevent all field name
+  // collisions with existing object properties, but some is better
+  // than none.
+  foreach (field_info_fieldable_types() as $type => $info) {
+    if (in_array($field['field_name'], $info['object keys'])) {
+      throw new FieldException(t('Attempt to create field name %name which is reserved by entity type %type.', array('%name' => $field['field_name'], '%type' => $type)));
+    }
   }
 
   $field += array(
@@ -377,14 +388,16 @@ function field_read_fields($params = array(), $include_additional = array()) {
  *   The field name to delete.
  */
 function field_delete_field($field_name) {
+  // Delete all non-deleted instances.
+  $field = field_info_field($field_name);
+  if (isset($field['bundles'])) {
+    foreach ($field['bundles'] as $bundle) {
+      field_delete_instance($field_name, $bundle);
+    }
+  }
+
   // Mark field storage for deletion.
   module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_delete_field', $field_name);
-
-  // Mark any instances of the field for deletion.
-  db_update('field_config_instance')
-    ->fields(array('deleted' => 1))
-    ->condition('field_name', $field_name)
-    ->execute();
 
   // Mark the field for deletion.
   db_update('field_config')
@@ -394,6 +407,8 @@ function field_delete_field($field_name) {
 
   // Clear the cache.
   field_cache_clear(TRUE);
+
+  module_invoke_all('field_delete_field', $field);
 }
 
 /**
@@ -447,10 +462,12 @@ function field_create_instance($instance) {
   // Problem : this would mean that a UI module cannot update an instance with a disabled formatter.
 
   // Ensure the field instance is unique.
-  // TODO : do we want specific messages when clashing with a disabled or inactive instance ?
   $prior_instance = field_read_instance($instance['field_name'], $instance['bundle'], array('include_inactive' => TRUE));
   if (!empty($prior_instance)) {
-    throw new FieldException(t('Attempt to create a field instance %field_name,%bundle which already exists.', array('%field_name' => $instance['field_name'], '%bundle' => $instance['bundle'])));
+    $message = $prior_instance['widget']['active']?
+      t('Attempt to create a field instance %field_name,%bundle which already exists and is active.', array('%field_name' => $instance['field_name'], '%bundle' => $instance['bundle'])):
+      t('Attempt to create a field instance %field_name,%bundle which already exists, although inactive.', array('%field_name' => $instance['field_name'], '%bundle' => $instance['bundle']));
+    throw new FieldException($message);
   }
 
   _field_write_instance($instance);
@@ -679,6 +696,9 @@ function field_read_instances($params = array(), $include_additional = array()) 
  *   The bundle for the instance which will be deleted.
  */
 function field_delete_instance($field_name, $bundle) {
+  // Save the instance for hook_field_delete_instance before it is deleted.
+  $instance = field_info_instance($field_name, $bundle);
+
   // Mark the field instance for deletion.
   db_update('field_config_instance')
     ->fields(array('deleted' => 1))
@@ -690,6 +710,8 @@ function field_delete_instance($field_name, $bundle) {
   module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_delete_instance', $field_name, $bundle);
   // Clear the cache.
   field_cache_clear();
+
+  module_invoke_all('field_delete_instance', $instance);
 }
 
 /**
@@ -870,7 +892,7 @@ function field_purge_instance($instance) {
   module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_purge_instance', $instance);
 
   // Clear the cache.
-  _field_info_cache_clear();
+  field_info_cache_clear();
 
   // Invoke external hooks after the cache is cleared for API consistency.
   module_invoke_all('field_purge_instance', $instance);
@@ -899,7 +921,7 @@ function field_purge_field($field) {
   module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_purge_field', $field);
 
   // Clear the cache.
-  _field_info_cache_clear();
+  field_info_cache_clear();
 
   // Invoke external hooks after the cache is cleared for API consistency.
   module_invoke_all('field_purge_field', $field);
