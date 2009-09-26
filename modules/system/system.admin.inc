@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.203 2009-09-19 11:07:36 dries Exp $
+// $Id: system.admin.inc,v 1.206 2009-09-21 07:59:18 dries Exp $
 
 /**
  * @file
@@ -1576,7 +1576,7 @@ function system_rss_feeds_settings() {
   $form['feed_item_length'] = array(
     '#type' => 'select',
     '#title' => t('Feed content'),
-    '#default_value' => 'teaser',
+    '#default_value' => 'fulltext',
     '#options' => array('title' => t('Titles only'), 'teaser' => t('Titles plus teaser'), 'fulltext' => t('Full text')),
     '#description' => t('Global setting for the default display of content items in each feed.')
   );
@@ -1790,7 +1790,7 @@ function system_regional_settings_submit($form, &$form_state) {
  */
 function system_date_time_lookup() {
   $result = format_date(REQUEST_TIME, 'custom', $_GET['format']);
-  drupal_json($result);
+  drupal_json_output($result);
 }
 
 /**
@@ -1822,7 +1822,7 @@ function system_site_maintenance_mode() {
  * @ingroup forms
  * @see system_settings_form()
  */
-function system_clean_url_settings($form) {
+function system_clean_url_settings($form, &$form_state) {
   global $base_url;
 
   // When accessing this form using a non-clean URL, allow a re-check to make
@@ -1852,7 +1852,7 @@ function system_clean_url_settings($form) {
   else {
     drupal_add_js(drupal_get_path('module', 'system') . '/system.js');
 
-    $form['#redirect'] = $base_url . '/admin/config/search/clean-urls';
+    $form_state['redirect'] = $base_url . '/admin/config/search/clean-urls';
     $form['clean_url_description'] = array(
       '#type' => 'markup',
       '#markup' => '<p>' . t('Use URLs like <code>example.com/user</code> instead of <code>example.com/?q=user</code>.') . ' ' . t('If you are directed to a <em>Page not found (404)</em> error after testing for clean URLs, see the <a href="@handbook">online handbook</a>.', array('@handbook' => 'http://drupal.org/node/15365')) . '</p>',

@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.992 2009-09-18 10:54:20 dries Exp $
+// $Id: common.inc,v 1.995 2009-09-25 15:20:12 dries Exp $
 
 /**
  * @file
@@ -364,8 +364,8 @@ function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
  * @see drupal_goto()
  */
 function drupal_get_destination() {
-  if (isset($_REQUEST['destination'])) {
-    return 'destination=' . urlencode($_REQUEST['destination']);
+  if (isset($_GET['destination'])) {
+    return 'destination=' . urlencode($_GET['destination']);
   }
   else {
     // Use $_GET here to retrieve the original path in source form.
@@ -418,9 +418,8 @@ function drupal_get_destination() {
  * @see drupal_get_destination()
  */
 function drupal_goto($path = '', $query = NULL, $fragment = NULL, $http_response_code = 302) {
-
-  if (isset($_REQUEST['destination'])) {
-    extract(parse_url(urldecode($_REQUEST['destination'])));
+  if (isset($_GET['destination'])) {
+    extract(parse_url(urldecode($_GET['destination'])));
   }
 
   $args = array(
@@ -471,8 +470,8 @@ function drupal_not_found() {
   watchdog('page not found', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
 
   // Keep old path for reference, and to allow forms to redirect to it.
-  if (!isset($_REQUEST['destination'])) {
-    $_REQUEST['destination'] = $_GET['q'];
+  if (!isset($_GET['destination'])) {
+    $_GET['destination'] = $_GET['q'];
   }
 
   $path = drupal_get_normal_path(variable_get('site_404', ''));
@@ -502,8 +501,8 @@ function drupal_access_denied() {
   watchdog('access denied', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
 
   // Keep old path for reference, and to allow forms to redirect to it.
-  if (!isset($_REQUEST['destination'])) {
-    $_REQUEST['destination'] = $_GET['q'];
+  if (!isset($_GET['destination'])) {
+    $_GET['destination'] = $_GET['q'];
   }
 
   $path = drupal_get_normal_path(variable_get('site_403', ''));
@@ -3168,7 +3167,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
   foreach ($items as $item) {
     switch ($item['type']) {
       case 'setting':
-        $output .= '<script type="text/javascript">' . $embed_prefix . 'jQuery.extend(Drupal.settings, ' . drupal_to_js(call_user_func_array('array_merge_recursive', $item['data'])) . ");" . $embed_suffix . "</script>\n";
+        $output .= '<script type="text/javascript">' . $embed_prefix . 'jQuery.extend(Drupal.settings, ' . drupal_json_encode(call_user_func_array('array_merge_recursive', $item['data'])) . ");" . $embed_suffix . "</script>\n";
         break;
 
       case 'inline':
@@ -3586,7 +3585,7 @@ function drupal_clear_js_cache() {
  *
  * We use HTML-safe strings, i.e. with <, > and & escaped.
  */
-function drupal_to_js($var) {
+function drupal_json_encode($var) {
   // json_encode() does not escape <, > and &, so we do it with str_replace()
   return str_replace(array("<", ">", "&"), array('\x3c', '\x3e', '\x26'), json_encode($var));
 }
@@ -3600,12 +3599,12 @@ function drupal_to_js($var) {
  * @param $var
  *   (optional) If set, the variable will be converted to JSON and output.
  */
-function drupal_json($var = NULL) {
+function drupal_json_output($var = NULL) {
   // We are returning JavaScript, so tell the browser.
   drupal_set_header('Content-Type', 'text/javascript; charset=utf-8');
 
   if (isset($var)) {
-    echo drupal_to_js($var);
+    echo drupal_json_encode($var);
   }
 }
 
@@ -3838,6 +3837,11 @@ function drupal_cron_run() {
 
   // Fetch the cron semaphore
   $semaphore = variable_get('cron_semaphore', FALSE);
+  
+  $return = FALSE;
+  // Grab the defined cron queues.
+  $queues = module_invoke_all('cron_queue_info');
+  drupal_alter('cron_queue_info', $queues);
 
   if ($semaphore) {
     if (REQUEST_TIME - $semaphore > 3600) {
@@ -3854,6 +3858,11 @@ function drupal_cron_run() {
     }
   }
   else {
+    // Make sure every queue exists. There is no harm in trying to recreate an
+    // existing queue.
+    foreach ($queues as $queue_name => $info) {
+      DrupalQueue::get($queue_name)->createQueue();
+    }
     // Register shutdown callback
     register_shutdown_function('drupal_cron_cleanup');
 
@@ -3871,8 +3880,19 @@ function drupal_cron_run() {
     variable_del('cron_semaphore');
 
     // Return TRUE so other functions can check if it did run successfully
-    return TRUE;
+    $return = TRUE;
   }
+  
+  foreach ($queues as $queue_name => $info) {
+    $function = $info['worker callback'];
+    $end = time() + (isset($info['time']) ? $info['time'] : 15);
+    $queue = DrupalQueue::get($queue_name);
+    while (time() < $end && ($item = $queue->claimItem())) {
+      $function($item->data);
+      $queue->deleteItem($item);
+    }
+  }
+  return $return;
 }
 
 /**

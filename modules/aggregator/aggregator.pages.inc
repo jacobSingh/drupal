@@ -1,5 +1,5 @@
 <?php
-// $Id: aggregator.pages.inc,v 1.33 2009-09-18 00:04:22 webchick Exp $
+// $Id: aggregator.pages.inc,v 1.35 2009-09-25 23:53:26 dries Exp $
 
 /**
  * @file
@@ -372,7 +372,7 @@ function theme_aggregator_page_rss($feeds, $category = NULL) {
   drupal_set_header('Content-Type', 'application/rss+xml; charset=utf-8');
 
   $items = '';
-  $feed_length = variable_get('feed_item_length', 'teaser');
+  $feed_length = variable_get('feed_item_length', 'fulltext');
   foreach ($feeds as $feed) {
     switch ($feed_length) {
       case 'teaser':
@@ -435,7 +435,7 @@ function theme_aggregator_page_opml($feeds) {
   $output .= "<opml version=\"1.1\">\n";
   $output .= "<head>\n";
   $output .= '<title>' . check_plain(variable_get('site_name', 'Drupal')) . "</title>\n";
-  $output .= '<dateModified>' . gmdate('r') . "</dateModified>\n";
+  $output .= '<dateModified>' . gmdate(DATE_RFC2822, REQUEST_TIME) . "</dateModified>\n";
   $output .= "</head>\n";
   $output .= "<body>\n";
   foreach ($feeds as $feed) {

@@ -1,5 +1,5 @@
 <?php
-// $Id: field.test,v 1.50 2009-09-18 00:04:22 webchick Exp $
+// $Id: field.test,v 1.52 2009-09-22 08:44:04 dries Exp $
 
 /**
  * @file
@@ -1405,7 +1405,7 @@ class FieldFormTestCase extends FieldTestCase {
     $this->drupalPost(NULL, $edit, $submit);
     unset($this->additionalCurlOptions[CURLOPT_URL]);
 
-    // The response is drupal_json, so we need to undo some escaping.
+    // The response is drupal_json_output, so we need to undo some escaping.
     $commands = json_decode(str_replace(array('\x3c', '\x3e', '\x26'), array("<", ">", "&"), $this->drupalGetContent()));
 
     // The JSON response will be two AJAX commands. The first is a settings
@@ -1559,6 +1559,35 @@ class FieldCrudTestCase extends FieldTestCase {
     }
   }
 
+  /**
+   * Test failure to create a field.
+   */
+  function testCreateFieldFail() {
+    $field_name = 'duplicate';
+    $field_definition = array('field_name' => $field_name, 'type' => 'test_field');
+    $query = db_select('field_config')->condition('field_name', $field_name)->countQuery();
+
+    // The field does not appear in field_config.
+    $count = $query->execute()->fetchField();
+    $this->assertEqual($count, 0, 'A field_config row for the field does not exist.');
+
+    // Make field creation fail.
+    variable_set('field_storage_module', 'field_test');
+    
+    // Try to create the field.
+    try {
+      $field = field_create_field($field_definition);
+      $this->assertTrue(FALSE, 'Field creation (correctly) fails.');
+    }
+    catch (Exception $e) {
+      $this->assertTrue(TRUE, 'Field creation (correctly) fails.');
+    }
+
+    // The field does not appear in field_config.
+    $count = $query->execute()->fetchField();
+    $this->assertEqual($count, 0, 'A field_config row for the field does not exist.');
+  }
+    
   /**
    * Test reading back a field definition.
    */

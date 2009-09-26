@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.792 2009-09-19 11:07:36 dries Exp $
+// $Id: system.module,v 1.796 2009-09-25 23:48:24 dries Exp $
 
 /**
  * @file
@@ -564,6 +564,7 @@ function system_menu() {
   );
   $items['admin/appearance/settings'] = array(
     'title' => 'Configure',
+    'description' => 'Configure default and theme specific settings.',
     'page arguments' => array('system_theme_settings'),
     'access arguments' => array('administer site configuration'),
     'type' => MENU_LOCAL_TASK,
@@ -816,7 +817,7 @@ function system_menu() {
   );
   $items['admin/config/search/clean-urls/check'] = array(
     'title' => 'Clean URL check',
-    'page callback' => 'drupal_json',
+    'page callback' => 'drupal_json_output',
     'page arguments' => array(array('status' => TRUE)),
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
@@ -1478,25 +1479,24 @@ function system_preprocess_page(&$variables) {
 }
 
 /**
- * Implement hook_user_form().
+ * Implement hook_form_FORM_ID_alter().
  */
-function system_user_form(&$edit, $account, $category) {
-  if ($category == 'account') {
+function system_form_user_profile_form_alter(&$form, &$form_state) {
+  if ($form['#user_category'] == 'account') {
     if (variable_get('configurable_timezones', 1)) {
-      system_user_timezone($edit, $form);
+      system_user_timezone($form, $form_state);
     }
     return $form;
   }
 }
 
 /**
- * Implement hook_user_register().
+ * Implement hook_form_FORM_ID_alter().
  */
-function system_user_register(&$edit, $account, $category) {
+function system_form_user_register_alter(&$form, &$form_state) {
   if (variable_get('configurable_timezones', 1)) {
-    $form = array();
     if (variable_get('user_default_timezone', DRUPAL_USER_TIMEZONE_DEFAULT) == DRUPAL_USER_TIMEZONE_SELECT) {
-      system_user_timezone($edit, $form);
+      system_user_timezone($form, $form_state);
     }
     else {
       $form['account']['timezone'] = array(
@@ -1521,8 +1521,11 @@ function system_user_login(&$edit, $account) {
 /**
  * Add the time zone field to the user edit and register forms.
  */
-function system_user_timezone(&$edit, &$form) {
+function system_user_timezone(&$form, &$form_state) {
   global $user;
+
+  $account = $form['#user'];
+
   $form['timezone'] = array(
     '#type' => 'fieldset',
     '#title' => t('Locale settings'),
@@ -1532,11 +1535,11 @@ function system_user_timezone(&$edit, &$form) {
   $form['timezone']['timezone'] = array(
     '#type' => 'select',
     '#title' => t('Time zone'),
-    '#default_value' => $edit['timezone'] ? $edit['timezone'] : ($edit['uid'] == $user->uid ? variable_get('date_default_timezone', '') : ''),
-    '#options' => system_time_zones(($edit['uid'] != $user->uid)),
+    '#default_value' => isset($account->timezone) ? $account->timezone : ($account->uid == $user->uid ? variable_get('date_default_timezone', '') : ''),
+    '#options' => system_time_zones($account->uid != $user->uid),
     '#description' => t('Select the desired local time and time zone. Dates and times throughout this site will be displayed using this time zone.'),
   );
-  if (!$edit['timezone'] && $edit['uid'] == $user->uid) {
+  if (!isset($account->timezone) && $account->uid == $user->uid) {
     $form['timezone']['#description'] = t('Your time zone setting will be automatically detected if possible. Please confirm the selection and click save.');
     $form['timezone']['timezone']['#attributes'] = array('class' => array('timezone-detect'));
     drupal_add_js('misc/timezone.js');
@@ -1662,12 +1665,26 @@ function system_admin_menu_block($item) {
   }
 
   $content = array();
+  $default_task = NULL;
+  $has_subitems = FALSE;
   $result = db_query("
-    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
-    FROM {menu_links} ml
-    LEFT JOIN {menu_router} m ON ml.router_path = m.path
-    WHERE ml.plid = :plid AND ml.menu_name = :name AND hidden = 0", array(':plid' => $item['mlid'], ':name' => $item['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
+    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, m.path, m.weight as router_weight, ml.*
+    FROM {menu_router} m 
+    LEFT JOIN {menu_links} ml ON m.path = ml.router_path
+    WHERE (ml.plid = :plid AND ml.menu_name = :name AND hidden = 0) OR (m.tab_parent = :path AND m.type IN (:local_task, :default_task))", array(':plid' => $item['mlid'], ':name' => $item['menu_name'], ':path' => $item['path'], ':local_task' => MENU_LOCAL_TASK, ':default_task' => MENU_DEFAULT_LOCAL_TASK), array('fetch' => PDO::FETCH_ASSOC));
   foreach ($result as $link) {
+    if (!isset($link['link_path'])) {
+      // If this was not an actual link, fake the tab as a menu link, so we
+      // don't need to special case it beyond this point.
+      $link['link_title'] = $link['title'];
+      $link['link_path'] = $link['path'];
+      $link['options'] = 'a:0:{}';
+      $link['weight'] = $link['router_weight'];
+    }
+    else {
+      // We found a non-tab subitem, remember that.
+      $has_subitems = TRUE;
+    }
     _menu_link_translate($link);
     if (!$link['access']) {
       continue;
@@ -1679,7 +1696,16 @@ function system_admin_menu_block($item) {
     }
     // Prepare for sorting as in function _menu_tree_check_access().
     // The weight is offset so it is always positive, with a uniform 5-digits.
-    $content[(50000 + $link['weight']) . ' ' . drupal_strtolower($link['title']) . ' ' . $link['mlid']] = $link;
+    $key = (50000 + $link['weight']) . ' ' . drupal_strtolower($link['title']) . ' ' . $link['mlid'];
+    $content[$key] = $link;
+    if ($link['type'] == MENU_DEFAULT_LOCAL_TASK) {
+      $default_task = $key;
+    }
+  }
+  if ($has_subitems) {
+    // If we've had at least one non-tab subitem, remove the link for the 
+    // default task, since that is already broken down to subitems.
+    unset($content[$default_task]);
   }
   ksort($content);
   $cache[$item['mlid']] = $content;
@@ -1872,7 +1898,7 @@ function _system_get_module_data() {
 
     // Invoke hook_system_info_alter() to give installed modules a chance to
     // modify the data in the .info files if necessary.
-    drupal_alter('system_info', $modules[$key]->info, $modules[$key]);
+    drupal_alter('system_info', $modules[$key]->info, $modules[$key], 'module');
   }
 
   // The install profile is required.
@@ -1965,7 +1991,7 @@ function _system_get_theme_data() {
 
       // Invoke hook_system_info_alter() to give installed modules a chance to
       // modify the data in the .info files if necessary.
-      drupal_alter('system_info', $themes[$key]->info, $themes[$key]);
+      drupal_alter('system_info', $themes[$key]->info, $themes[$key], 'theme');
 
       if (!empty($themes[$key]->info['base theme'])) {
         $sub_themes[] = $key;
@@ -2127,11 +2153,13 @@ function system_region_list($theme_key, $show = REGIONS_ALL) {
 /**
  * Implement hook_system_info_alter().
  */
-function system_system_info_alter(&$info, $file) {
+function system_system_info_alter(&$info, $file, $type) {
   // Remove page-top from the blocks UI since it is reserved for modules to
   // populate from outside the blocks system.
-  $info['regions_hidden'][] = 'page_top';
-  $info['regions_hidden'][] = 'page_bottom';
+  if ($type == 'theme') {
+    $info['regions_hidden'][] = 'page_top';
+    $info['regions_hidden'][] = 'page_bottom';
+  }
 }
 
 /**
@@ -2659,7 +2687,7 @@ function system_timezone($abbreviation = '', $offset = -1, $is_daylight_saving_t
   // interpreted as the empty string.
   $abbreviation = $abbreviation ? $abbreviation : '';
   $timezone = timezone_name_from_abbr($abbreviation, intval($offset), $is_daylight_saving_time);
-  drupal_json($timezone);
+  drupal_json_output($timezone);
 }
 
 /**
@@ -2771,7 +2799,7 @@ function system_page_build(&$page) {
       // Trigger cron run via AJAX.
       '#attached' => array(
         'js' => array(
-          '(function($){ $.get(' . drupal_to_js(url('system/run-cron-image')) . '); })(jQuery);' => array('type' => 'inline', 'scope' => 'header'),
+          '(function($){ $.get(' . drupal_json_encode(url('system/run-cron-image')) . '); })(jQuery);' => array('type' => 'inline', 'scope' => 'header'),
         ),
       ),
       // Trigger cron run for clients not supporting JavaScript (fall-back).
