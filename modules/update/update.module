@@ -199,39 +199,33 @@ function update_menu() {
     'file' => 'update.fetch.inc',
   );
 
-  return $items;
-}
-
-function update_menu_alter(&$items) {
   $items['admin/config/modules/install'] = array(
     'title' => 'Install',
     'description' => 'Install new modules and themes',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('update_install_form'),
-    // JS: There is a bug in menu which causes problems when you use this.
-    //'access callback' => 'update_plugin_manager_access',
-    //'access arguments' => array(),
-    'access arguments' => array('administer site configuration'),
+    'access callback' => 'update_plugin_manager_access',
+    'access arguments' => array(),
     'weight' => 20,
     'type' => MENU_LOCAL_TASK,
     'file' => 'update.admin.inc',
-    'file path' => dirname(__FILE__),
   );
+
   $items['admin/appearance/install'] = array(
     'title' => 'Install',
     'description' => 'Install',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('update_install_form'),
-    // JS: There is a bug in menu which causes problems when you use this.
-    //'access callback' => 'update_plugin_manager_access',
-    //'access arguments' => array(),
-    'access arguments' => array('administer site configuration'),
+    'access callback' => 'update_plugin_manager_access',
+    'access arguments' => array(),
     'weight' => 20,
     'type' => MENU_LOCAL_TASK,
     'file' => 'update.admin.inc',
-    'file path' => dirname(__FILE__),
   );
+
+  return $items;
 }
+
 
 /**
  * Implements hook_theme().
@@ -720,6 +714,12 @@ function update_flush_caches() {
   }
   return array();
 }
+
+
+function update_plugin_manager_access() {
+  return variable_get('plugin_manager_enabled', TRUE);
+}
+
 
 /**
  * @} End of "defgroup update_status_cache".

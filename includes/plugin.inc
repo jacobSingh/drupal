@@ -1,5 +1,4 @@
 <?php
-
 // $Id$
 
 /**
@@ -19,8 +18,8 @@ function plugin_filetransfer_form($form_state) {
   $form = array();
   $form['#action'] = url($base_url . '/plugin.php', array('absolute' => TRUE));
 
-  $form['#attached_css'][] = drupal_get_path('module', 'update') . '/update.css';
-  $form['#attached_js'][] = drupal_get_path('module', 'update') . '/update.js';
+  $form['#attached']['css'][] = drupal_get_path('module', 'update') . '/update.css';
+  $form['#attached']['js'][] = drupal_get_path('module', 'update') . '/update.js';
   // Get all the available ways to transfer files.
   $available_backends = module_invoke_all('filetransfer_backends');
   if (!count($available_backends)) {
@@ -149,8 +148,6 @@ function plugin_filetransfer_form_validate($form, &$form_state) {
   }
 }
 
-
-
 /**
  * Submit function for the main update form.
  *
@@ -190,7 +187,9 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
         $_SESSION['filetransfer_settings'] = $form_state['values']['connection_settings'][$filetransfer_backend];
 
         _plugin_manager_create_and_setup_directories($ft, 0777);
-        drupal_goto(url($base_url . '/plugin.php', array('absolute' => TRUE)));
+        
+        // Now run the batch.
+        plugin_manager_run_batch();
       }
       break;
 
@@ -205,77 +204,28 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
   }
 }
 
-function _plugin_manager_create_and_setup_directories($filetransfer, $mode = 0755) {
-
-  $theme_dir = _plugin_get_theme_dir();
-  $module_dir = _plugin_get_module_dir();
-  // If there are no module or theme directories create them.
-  if (!is_dir($theme_dir) || !is_dir($module_dir)) {
-    if (!is_writable(DRUPAL_ROOT . '/' . conf_path())) {
-      $filetransfer->chmod(DRUPAL_ROOT . '/' . conf_path(), $mode, FALSE);
-    }
-    _plugin_manager_create_dirs();
-  }
-
-  if (!is_writable($theme_dir)) {
-    $filetransfer->chmod($theme_dir, $mode, TRUE);
-  }
-  if (!is_writable($module_dir)) {
-    $filetransfer->chmod($module_dir, $mode, TRUE);
-  }
-}
-
-function _plugin_manager_create_dirs() {
-  $theme_dir = _plugin_get_theme_dir();
-  $module_dir = _plugin_get_module_dir();
-  
-  if (!is_dir($theme_dir)) {
-    mkdir($theme_dir);
-  }
-  if (!is_dir($module_dir)) {
-    mkdir($module_dir);
-  }
-}
-
 /**
- * Determines if the modules or themes directories are writable.
+ * Creates the installation directories for different types of updates
  *
- *
- * @param string $type Which type of plugin to check for. (Currently not implemented)
- * @return boolean
+ * @param <type> $filetransfer
+ * @param <type> $mode
  */
-function _plugin_manager_writable_dir($type = 'both') {
-  switch ($type) {
-    case 'both':
-      $test[] = conf_path() . '/modules';
-      $test[] = conf_path() . '/themes';
-      break;
-    case 'module':
-      $test[] = conf_path() . '/modules';
-      break;
-    case 'theme':
-      $test[] = conf_path() . '/themes';
-      break;
-  }
-
-  foreach($test as $path) {
-    if (!is_writable($path)) {
-      return FALSE;
+function _plugin_manager_create_and_setup_directories($filetransfer, $mode = 0755) {
+  $updater_classes = update_get_updaters();
+  
+  foreach ($updater_classes as $class) {
+    $install_location = call_user_func("{$class}::getInstallDirectory");
+    // Make the parent dir writable if need be and create the dir.
+    if (!is_dir($install_location) && !is_writable(dirname($install_location))) {
+      $filetransfer->chmod(dirname($install_location), $mode, FALSE);
+      $filetransfer->createDirectory($install_location);
     }
+    $filetransfer->chmod($install_location, $mode, FALSE);
   }
-  return TRUE;
-}
-
-function _plugin_get_module_dir() {
-  return DRUPAL_ROOT . '/' . conf_path() . '/modules';
-}
-
-function _plugin_get_theme_dir() {
-  return DRUPAL_ROOT . '/' . conf_path() . '/themes';
 }
 
 /**
- * Blantantly (and shamefully) ripped from update.php.
+ * Blantantly (and shamefully) (and regrettably) ripped from update.php.
  *
  * Interim measure, this code is not very clear.
  * @param array $messages
@@ -311,4 +261,16 @@ function get_plugin_report($messages) {
     $output .= '</div>';
   }
   return $output;
+}
+
+function plugin_manager_run_batch() {
+  drupal_set_title('Installing updates');
+  $batch = $_SESSION['plugin_op'];
+  dpr($batch);
+  update_batch_copy_project('mopa', 'temporary://update-cache/mopa-7.x-1.x-dev.tar.gz');
+  die();
+  
+  //unset($_SESSION['plugin_op']);
+  batch_set($batch);
+  batch_process(url($base_url . '/plugin.php', array('absolute' => TRUE)));
 }

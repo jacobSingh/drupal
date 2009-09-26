@@ -1,5 +1,6 @@
 <?php
 // $Id$
+require_once 'updaters.inc';
 
 /**
  * @file
@@ -184,7 +185,6 @@ function update_update_form_submit($form, &$form_state) {
         // This is the .tar.gz from d.o.
         $url = $latest_version['download_link'];
         
-        // Put these on the end
         $operations[] = array(
           'update_batch_copy_project',
           array(
@@ -392,6 +392,7 @@ function update_batch_get_project($project, &$context) {
  * @return void
  */
 function update_batch_copy_project($project, $url, &$context) {
+dd('as');
   if (!isset($context['results'][$project])) {
     $context['results'][$project] = array();
   }
@@ -401,7 +402,7 @@ function update_batch_copy_project($project, $url, &$context) {
   }
 
   $local_cache = update_get_file($url);
-  
+
   // This extracts the file into the standard place.
   try {
     update_untar($local_cache);
@@ -412,6 +413,10 @@ function update_batch_copy_project($project, $url, &$context) {
   }
 
   $project_source_dir = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
+  dd("as");
+  $updater = Updater::factory($project_source_dir);
+  dpr($updater);
+  die();
   // Now check the dependencies.
   $info_file = _update_find_info_file($project_source_dir);
   $dependencies = _update_check_dependencies($info_file);
@@ -818,6 +823,17 @@ function _update_find_info_file($directory) {
   return $info_file->uri;
 }
 
-function update_plugin_manager_access() {
-  return variable_get('plugin_manager_enabled', TRUE);
+/**
+ * Returns a list of classes which implement the DrupalUpdater interface
+ *
+ * @return array
+ */
+function update_get_updaters() {
+  $updaters = array();
+  foreach(get_declared_classes() as $class) {
+    if (in_array('DrupalUpdater', class_implements($class))) {
+      $updaters[] = $class;
+    }
+  }
+  return $updaters;
 }

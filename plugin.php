@@ -111,22 +111,8 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
     return;
   }
   else {
-    if (_plugin_manager_writable_dir()) {
-      drupal_set_title('Installing updates');
-      // Go ahead, process the batch.
-      // I just process the batch, because everything is set-up.
-      // I chown'd god.
-      $batch = $_SESSION['plugin_op'];
-      unset($_SESSION['plugin_op']);
-      batch_set($batch);
-      batch_process(url($base_url . '/plugin.php', array('absolute' => TRUE)));
-    }
-    else {
-      // Still needs to be refactored, big time.
-      $output = drupal_render(drupal_get_form('plugin_filetransfer_form'));
-      // Then when it comes back, we need to:
-      // Set the modules directory to be writable - is this good enough?
-    }
+    // We have a batch to process, show the filetransfer form.
+    $output = drupal_render(drupal_get_form('plugin_filetransfer_form'));
   }
 
   if (!empty($output)) {
