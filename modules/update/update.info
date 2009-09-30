@@ -6,16 +6,11 @@ package = Core
 core = 7.x
 files[] = update.compare.inc
 files[] = update.fetch.inc
-<<<<<<< HEAD
 files[] = update.admin.inc
-files[] = update.report.inc
-files[] = update.settings.inc
-files[] = update.install
+files[] = updaters.inc
 files[] = update.js
-=======
 files[] = update.install
 files[] = update.module
 files[] = update.report.inc
 files[] = update.settings.inc
 files[] = update.test
->>>>>>> 57fb4ed7ca80f437afaacb7ee287d8425a7e8c96

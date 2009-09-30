@@ -74,7 +74,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
       // This sets the permissions to non-writable for everyone.
       _plugin_manager_create_and_setup_directories($ft, 0755);
     }
-
+    
     //Clear the session out;
     unset($_SESSION['update_batch_results']);
 
@@ -94,25 +94,36 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
     $output .= get_plugin_report($results['messages']);
     drupal_set_title('Update complete');
 
+    $links = array();
+    if (is_array($results['tasks'])) {
+      $links += $results['tasks'];
+    }
+    
 
-    $links = array(
+    $links = array_merge($links, array(
       l('Administration pages', 'admin'),
       l('Front page', '<front>'),
-    );
+    ));
+
     $output .= theme('item_list', $links);
 
     print theme('update_page', $output);
     return;
   }
-  
-  if (empty($_SESSION['plugin_op'])) {
-    $output = t("It appears you have reached this page in error.");
-    print theme('update_page', $output);
-    return;
-  }
-  else {
-    // We have a batch to process, show the filetransfer form.
-    $output = drupal_render(drupal_get_form('plugin_filetransfer_form'));
+
+  if (isset($_GET['batch'])) {
+    $output = _batch_page();
+  } else {
+
+    if (empty($_SESSION['plugin_op'])) {
+      $output = t("It appears you have reached this page in error.");
+      print theme('update_page', $output);
+      return;
+    }
+    elseif (!$batch = batch_get()) {
+      // We have a batch to process, show the filetransfer form.
+      $output = drupal_render(drupal_get_form('plugin_filetransfer_form'));
+    }
   }
 
   if (!empty($output)) {

@@ -11,9 +11,9 @@ require_once 'updaters.inc';
 /**
  * Menu callback; main updates form.
  */
-function update_update_form($form_state = array()) {
+function update_update_form($form, $form_state = array()) {
   $form = array();
-
+  
   if (!isset($form_state['values'])) {
     // This is the first page of the update process.
     $form = _update_update_form_update_table();
@@ -166,7 +166,6 @@ function _update_update_form_display_steps() {
   return $form;
 }
 
-
 /**
  * Submit function for the main update form.
  *
@@ -192,6 +191,7 @@ function update_update_form_submit($form, &$form_state) {
             $url,
           ),
         );
+        
         $operations[] = array('update_batch_update_project', array($project));
       }
 
@@ -204,12 +204,18 @@ function update_update_form_submit($form, &$form_state) {
       );
 
       $_SESSION['plugin_op'] = $batch;
+
+      if ($form_state['values']['site_offline'] == TRUE) {
+        // Put site in offline mode.
+        variable_set('site_offline', TRUE);
+      }
       drupal_goto(url($base_url . '/plugin.php', array('absolute' => TRUE)));
       return;
       
       break;
     
     default:
+      $form_state['rebuild'] = TRUE;
     // This is the first page, and store the list of selected projects
       $form_state['storage']['projects'] = array_keys(array_filter($form_state['values']['projects']));
     break;
@@ -283,16 +289,23 @@ function update_install_form_submit($form, &$form_state) {
     return;
   }
 
-  // @TODO: This should use the project.info file stuff probably
-  // This is not reliable (the directory name)
-  $project = drupal_substr($files[0]['filename'], 0, -1); // Remove the trailing slash.
+  $project = drupal_substr($files[0]['filename'],0,-1); // Unfortunately, we can only use the directory name for this. :(
+  
+  $project_location = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
+  update_untar(drupal_realpath($local_cache));
 
-  // I am already installed
-  if (_update_get_project_location($project)) {
-    form_set_error($field, t('%project is already installed', array('%project' => $project)));
+  $updater = Updater::factory($project_location);
+  $project_title = Updater::getProjectTitle($project_location);
+
+  if (!$project) {
+    form_set_error($field, t('Unable to determine %project name', array('%project' => $project_title)));
+  }
+  
+  if ($updater->isInstalled()) {
+    form_set_error($field, t('%project is already installed', array('%project' => $project_title)));
     return;
   }
-
+  
   $operations = array();
   $operations[] = array(
     'update_batch_copy_project',
@@ -302,37 +315,8 @@ function update_install_form_submit($form, &$form_state) {
     ),
   );
 
-  // We expand the archive now, so we can figure out what is in it.
-  $project_location = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
-  update_untar(drupal_realpath($local_cache));
-
-  /**
-   * Determines the modules which should be enabled by default
-   * If there is a project.info file, use that, else use $project.info
-   * (i.e. views.info)
-   */
-  $project_info = NULL;
-
-  $type = NULL;
-  
-  $info_file = _update_find_info_file($project_location);
-  $project_info = drupal_parse_info_file($info_file);
-
-  switch (_update_get_project_type_by_directory($project_location)) {
-    case 'module':
-      if (!isset($project_info['default_modules']) && basename($info_file) == "{$project}.info") {
-        $project_info['default_modules'] = array($project);
-      }
-      $operations[] = array('update_batch_enable_modules', array($project_info['default_modules']));
-      break;
-
-    case 'theme':
-      $operations[] = array('update_batch_enable_themes', array(array($project)));
-      break;
-  }
-  
   $batch = array(
-    'title' => t('Installing %project', array('%project' => $project_info['name'])),
+    'title' => t('Installing %project', array('%project' => $project_title)),
     'init_message' => t('Preparing update operation'),
     'operations' => $operations,
     'finished' => 'update_batch_finished',
@@ -358,8 +342,11 @@ function update_install_form_submit($form, &$form_state) {
  * @return void;
  */
 function update_batch_get_project($project, &$context) {
-  if (!isset($context['results'][$project])) {
-    $context['results'][$project] = array();
+  if (!isset($context['results']['log'])) {
+    $context['results']['log'] = array();
+  }
+  if (!isset($context['results']['log'][$project])) {
+    $context['results']['log'][$project] = array();
   }
   if (!isset($context['sandbox']['started'])) {
     $context['sandbox']['started'] = TRUE;
@@ -387,16 +374,34 @@ function update_batch_get_project($project, &$context) {
  * @todo Fix the $project param (refactor)
  * @param string $project Either name of the project being installed or a
  * @param string $url Location of a tarball to install if recommended version of $project not required
+ * @param string $filetransfer FileTransfer class
  * @param array &$context BatchAPI storage
  *
  * @return void
  */
-function update_batch_copy_project($project, $url, &$context) {
-dd('as');
-  if (!isset($context['results'][$project])) {
-    $context['results'][$project] = array();
+function update_batch_copy_project($project, $url, $filetransfer, &$context) {
+
+  // Initialize some variables
+  if (!isset($context['results']['log'])) {
+    $context['results']['log'] = array();
   }
-  if (!empty($context['results'][$project]['#abort'])) {
+
+  if (!$context['results']['tasks']) {
+    $context['results']['tasks'] = array();
+  }
+
+  /**
+   * Unfortuantely, because the batch API uses a session and a connection
+   * pointer will be lost between requests, when doing an update of multiple
+   * modules, we need to unset the connection pointer to re-init a connect.
+   */
+  unset($filetransfer->connection);
+
+  if (!isset($context['results']['log'][$project])) {
+    $context['results']['log'][$project] = array();
+  }
+  
+  if (!empty($context['results']['log'][$project]['#abort'])) {
     $context['#finished'] = 1;
     return;
   }
@@ -406,60 +411,34 @@ dd('as');
   // This extracts the file into the standard place.
   try {
     update_untar($local_cache);
-  } catch (Exception $e) {
-    _update_batch_create_message($context['results'][$project], $e->getMessage(), FALSE);
-    $context['results'][$project]['#abort'] = TRUE;
-    return;
-  }
-
-  $project_source_dir = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
-  dd("as");
-  $updater = Updater::factory($project_source_dir);
-  dpr($updater);
-  die();
-  // Now check the dependencies.
-  $info_file = _update_find_info_file($project_source_dir);
-  $dependencies = _update_check_dependencies($info_file);
-  //@TODO: Not yet implemented
-
-  if ($location = _update_get_project_location($project)) {
-    // This is an update
-    $is_install = FALSE;
-  }
-  else {
-    //This is a fresh install, not an update
-    $type = _update_get_project_type_by_directory($project_source_dir);
-    if (!$type) {
-      _update_batch_create_message($context['results'][$project], t("Unable to determine project type for %name", array("%name" => $project)), FALSE);
-      $context['results'][$project]['#abort'] = TRUE;
-      return;
-    }
-
-    $default_locations = array(
-      'module' => conf_path() . '/modules',
-      'theme' => conf_path() . '/themes',
-      'theme_engine' => conf_path() . '/themes/engines'
-    );
-
-    $location = variable_get("update_default_{$type}_location", $default_locations[$type]) . '/' . $project;
-    $is_install = TRUE;
-  }
-
-  $project_destination_dir = DRUPAL_ROOT . '/' . $location;
-  
-  try {
-
-    if (!$is_install) {
-      _update_remove_directory($project_destination_dir);
-    }
-    _update_copy_directory($project_source_dir, $project_destination_dir);
   }
   catch (Exception $e) {
-    _update_batch_create_message($context['results'][$project], t("Error installing / updating)"), FALSE);
-    $context['results'][$project]['#abort'] = TRUE;
+    _update_batch_create_message($context['results']['log'][$project], $e->getMessage(), FALSE);
+    $context['results']['log'][$project]['#abort'] = TRUE;
     return;
   }
-  _update_batch_create_message($context['results'][$project], t('Installed %project_name successfully', array('%project_name' => $project)));
+  
+  $project_source_dir = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
+  $updater = Updater::factory($project_source_dir);
+
+  try {
+    if ($updater->isInstalled()) {
+      // This is an update.
+      $tasks = $updater->update($filetransfer);
+    }
+    else {
+      $tasks = $updater->install($filetransfer);
+    }
+  }
+  catch (UpdaterError $e) {
+    _update_batch_create_message($context['results']['log'][$project], t("Error installing / updating)"), FALSE);
+    $context['results']['log'][$project]['#abort'] = TRUE;
+    return;
+  }
+
+  _update_batch_create_message($context['results']['log'][$project], t('Installed %project_name successfully', array('%project_name' => $project)));
+  $context['results']['tasks'] += $tasks;
+
   $context['finished'] = 1;
 }
 
@@ -467,7 +446,8 @@ dd('as');
  * Set the batch to run the update functions.
  */
 function update_batch_update_project($project, &$context) {
-  if (!empty($context['results'][$project]['#abort'])) {
+  
+  if (!empty($context['results']['log'][$project]['#abort'])) {
     $context['#finished'] = 1;
     return;
   }
@@ -488,13 +468,14 @@ function update_batch_update_project($project, &$context) {
  * Batch callback for when the batch is finished.
  */
 function update_batch_finished($success, $results) {
-  foreach ($results as $module => $messages) {
+  foreach ($results['log'] as $module => $messages) {
     if (!empty($messages['#abort'])) {
       $success = FALSE;
     }
   }
   $_SESSION['update_batch_results']['success'] = $success;
-  $_SESSION['update_batch_results']['messages'] = $results;
+  $_SESSION['update_batch_results']['messages'] = $results['log'];
+  $_SESSION['update_batch_results']['tasks'] = $results['tasks'];
 }
 
 /**
@@ -562,89 +543,6 @@ function update_get_filetransfer($method, $overrides = array()) {
   return $filetransfer;
 }
 
-
-/**
- * Helper function, returns a an associative array of a project's type and
- * location returns false on failure.
- */
-function _update_get_project_type_and_location($name) {
-  foreach (array('module', 'theme') as $type) {
-    if ($dir = drupal_get_path($type, $name)) {
-      return array('type' => $type, 'location' => $dir);
-    }
-  }
-  return FALSE;
-}
-
-function _update_get_project_type($name) {
-  $project_info = _update_get_project_type_and_location($name);
-  return $project_info['type'];
-}
-
-function _update_get_project_location($name) {
-  $project_info = _update_get_project_type_and_location($name);
-  return $project_info['location'];
-}
-
-/**
- * Get's the latest release of a project
- *
- * @param string $project Name of the project
- * @return array An array of information about the latest recommended
- * release of the project
- */
-function _update_get_latest_version($project) {
-  if ($available = update_get_available(FALSE)) {
-    module_load_include('inc', 'update', 'update.compare');
-    $projects_data = update_calculate_project_data($available);
-    $project_data = $projects_data[$project];
-    return $project_data['releases'][$project_data['latest_version']];
-  }
-}
-
-/**
- * Returns the available updates for a given module in an array
- *
- * @param $project
- *  The name of the module.
- */
-function _update_get_schema_updates($project) {
-  require_once './includes/install.inc';
-  require_once './includes/update.inc';
-  
-  if (_update_get_project_type($project) != 'module') {
-    return array();
-  }
-  module_load_include('install', $project);
-
-  if (!$updates = drupal_get_schema_versions($project)) {
-    return array();
-  }
-  $updates_to_run = array();
-  $modules_with_updates = update_get_update_list();
-  if ($updates = $modules_with_updates[$project]) {
-    if ($updates['start']) {
-      return $updates['pending'];
-    }
-  }
-  return array();
-}
-
-/**
- * Helper function, given an info file, will determine what type of project it is
- *
- * @param string $project_directory path to project
- *
- * @return string project type, could be theme or module.
- */
-function _update_get_project_type_by_directory($project_directory) {
-  if (file_scan_directory($project_directory, '/.*\.module/')) {
-    return 'module';
-  }
-  return 'theme';
-}
-
-
 /**
  * Get a file from the server, or if it was already downloaded, get the local
  * path to the file.
@@ -694,145 +592,19 @@ function _update_get_recommended_version($name) {
     return $project['releases'][$project['recommended']];
   }
 }
-
-/**
- * Can read an info file and check if it has any unmet dependencies.
- *
- * @param string $info_file Pathname of info file to check.
- */
-function _update_check_dependencies($info_file) {
-  $files = system_get_module_data();
-
-  // Remove hidden modules from display list.
-  foreach ($files as $filename => $file) {
-    if (!empty($file->info['hidden']) || !empty($file->info['required'])) {
-      unset($files[$filename]);
-    }
-  }
-
-  $info = drupal_parse_info_file(($info_file));
-
-  $errors = array();
-  if (!is_array($info['dependencies'])) {
-      return array();
-  }
-  foreach ($info['dependencies'] as $module) {
-    if (!isset($files[$module])) {
-      $errors[$module] = t('@module (<span class="admin-missing">missing</span>)', array('@module' => drupal_ucfirst($module)));
-    }
-  }
-  return $errors;
-}
-
-
-/**
- * Recursively coppies a directory.
- *
- * @todo: Should use RecursiveDirectoryIterator.
- *
- * @param string $src
- * @param string $dest
- * @param array $exclude_patterns
- */
-function _update_copy_directory($src, $dest) {
-  if (!file_exists($dest)) {
-    mkdir($dest);
-  }
-  foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src), RecursiveIteratorIterator::SELF_FIRST) as $filename => $file) {
-    $relative_path = drupal_substr($filename, drupal_strlen($src));
-    if ($file->isDir()) {
-      mkdir($dest . '/' . $relative_path);
-    }
-    else {
-      copy($filename, $dest . '/' . $relative_path);
-    }
-  }
-}
-
-/**
- * Duh. rm -Rf
- *
- * @param string $src The directory you want to zap.
- * @param string $jail An optional jail to make sure you don't wipe /.
- */
-function _update_remove_directory($src, $jail = DRUPAL_ROOT) {
-  foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src), RecursiveIteratorIterator::CHILD_FIRST) as $filename => $file) {
-    if (strpos($filename, $jail) != 0) {
-      throw new Exception("Tried to delete $filename, but it is outside of the jail: $jail");
-    }
-    if ($file->isDir()) {
-      rmdir($file->getPathName());
-    }
-    else {
-      unlink($file->getPathName());
-    }
-  }
-  rmdir($src);
-}
-
-/**
- *
- * Enable an array of themes
- *
- * @TODO: This is not implemented yet.  Just a stub
- * @param <type> $project
- * @return <type>
- */
-function update_batch_enable_themes($themes, &$context) {
-  // @todo: Enable the theme.  Would be ideal to prompt post install
-  // if it should be default as well.
-}
-
-/**
- * Enable an array of modules
- * @param <type> $modules
- */
-function update_batch_enable_modules($modules, &$context) {
-  foreach ($modules as $module) {
-    module_enable(array($module));
-
-    _update_batch_create_message($context['results'][$project], t("%project has been enabled", array('%project' => $module)));
-  }
-}
-
-/**
- * Looks through a directory, preference is for info file with same name as directory
- *
- * @param string $directory
- *
- * return string $path
- */
-function _update_find_info_file($directory) {
-
-  if ($project_info_files = file_scan_directory($directory, '/\.project\.info/')) {
-    return $project_info_files[0];
-  }
-
-  $info_files = file_scan_directory($directory, '/.*\.info/');
-  if (!$info_files) {
-    return FALSE;
-  }
-  foreach ($info_files as $info_file) {
-    if (drupal_substr($info_file->filename, 0, -5) == basename($directory)) {
-      // Has the same name as the directory, is prefered.
-      return $info_file->uri;
-    }
-  }
-  // Return the first one.
-  $info_file = array_shift($info_files);
-  return $info_file->uri;
-}
-
 /**
  * Returns a list of classes which implement the DrupalUpdater interface
  *
  * @return array
  */
 function update_get_updaters() {
-  $updaters = array();
-  foreach(get_declared_classes() as $class) {
-    if (in_array('DrupalUpdater', class_implements($class))) {
-      $updaters[] = $class;
+  $updaters = drupal_static(__FUNCTION__);
+  if (!$updaters) {
+    $updaters = array();
+    foreach(get_declared_classes() as $class) {
+      if (in_array('DrupalProjectUpdater', class_implements($class))) {
+        $updaters[] = $class;
+      }
     }
   }
   return $updaters;

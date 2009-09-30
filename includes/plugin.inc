@@ -24,7 +24,7 @@ function plugin_filetransfer_form($form_state) {
   $available_backends = module_invoke_all('filetransfer_backends');
   if (!count($available_backends)) {
     // @TODO: Clean up this error handling
-    drupal_set_message(t('Unable to continue, not available methods of file transfer'), 'error');
+    drupal_set_message(t('Unable to continue, no available methods of file transfer'), 'error');
     return array();
   }
 
@@ -189,7 +189,7 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
         _plugin_manager_create_and_setup_directories($ft, 0777);
         
         // Now run the batch.
-        plugin_manager_run_batch();
+        plugin_manager_run_batch($ft);
       }
       break;
 
@@ -263,14 +263,18 @@ function get_plugin_report($messages) {
   return $output;
 }
 
-function plugin_manager_run_batch() {
+function plugin_manager_run_batch($filetransfer) {
+  global $base_url;
   drupal_set_title('Installing updates');
   $batch = $_SESSION['plugin_op'];
-  dpr($batch);
-  update_batch_copy_project('mopa', 'temporary://update-cache/mopa-7.x-1.x-dev.tar.gz');
-  die();
+  foreach ($batch['operations'] as $key => $args) {
+    // Add the filetransfer class
+    $function = $args[0];
+    if ($function == 'update_batch_copy_project') {
+      $batch['operations'][$key][1][] = $filetransfer;
+    }
+  }
   
-  //unset($_SESSION['plugin_op']);
   batch_set($batch);
-  batch_process(url($base_url . '/plugin.php', array('absolute' => TRUE)));
+  batch_process(url($base_url . '/plugin.php', array('absolute' => TRUE)), url($base_url . '/plugin.php', array('absolute' => TRUE, 'query' => array('batch' => 1))));
 }
