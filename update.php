@@ -1,5 +1,5 @@
 <?php
-// $Id: update.php,v 1.303 2009-09-14 07:33:55 dries Exp $
+// $Id: update.php,v 1.305 2009-09-28 22:16:32 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -86,7 +86,7 @@ function update_script_selection_form() {
       '#markup' => '<p>The version of Drupal you are updating from has been automatically detected.</p>',
       '#weight' => -5,
     );
-    $form['start']['#title'] = strtr('!num pending updates', array('!num' => $count));
+    $form['start']['#title'] = format_plural($count, '1 pending update', '@count pending updates');
     $form['has_js'] = array(
       '#type' => 'hidden',
       '#default_value' => FALSE,
@@ -291,6 +291,10 @@ if (empty($op) && $update_access_allowed) {
   module_list(TRUE, FALSE, FALSE, $module_list);
   drupal_load('module', 'system');
   drupal_load('module', 'filter');
+
+  // Reset the module_implements() cache so that any new hook implementations
+  // in updated code are picked up.
+  module_implements('', FALSE, TRUE);
 
   // Set up $language, since the installer components require it.
   drupal_language_initialize();

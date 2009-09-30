@@ -1,5 +1,5 @@
 <?php
-// $Id: number.module,v 1.18 2009-09-11 00:06:53 webchick Exp $
+// $Id: number.module,v 1.20 2009-09-27 11:12:15 dries Exp $
 
 /**
  * @file
@@ -20,7 +20,7 @@ function number_theme() {
  */
 function number_theme_registry_alter(&$theme_registry) {
   // The number_integer and number_decimal formatters use the same function.
-  $theme_registry['field_formatter_number_integer']['function'] = 'theme_field_formatter_number';
+  $theme_registry['field_formatter_number_default']['function'] = 'theme_field_formatter_number';
   $theme_registry['field_formatter_number_decimal']['function'] = 'theme_field_formatter_number';
 }
 
@@ -34,7 +34,7 @@ function number_field_info() {
       'description' => t('This field stores a number in the database as an integer.'),
       'instance_settings' => array('min' => '', 'max' => '', 'prefix' => '', 'suffix' => ''),
       'default_widget' => 'number',
-      'default_formatter' => 'number_integer',
+      'default_formatter' => 'number_default',
     ),
     'number_decimal' => array(
       'label' => t('Decimal'),
@@ -42,14 +42,14 @@ function number_field_info() {
       'settings' => array('precision' => 10, 'scale' => 2, 'decimal' => '.'),
       'instance_settings' => array('min' => '', 'max' => '', 'prefix' => '', 'suffix' => ''),
       'default_widget' => 'number',
-      'default_formatter' => 'number_integer',
+      'default_formatter' => 'number_decimal',
     ),
     'number_float' => array(
       'label' => t('Float'),
       'description' => t('This field stores a number in the database in a floating point format.'),
       'instance_settings' => array('min' => '', 'max' => '', 'prefix' => '', 'suffix' => ''),
       'default_widget' => 'number',
-      'default_formatter' => 'number_integer',
+      'default_formatter' => 'number_decimal',
     ),
   );
 }
@@ -96,7 +96,7 @@ function number_field_schema($field) {
 /**
  * Implement hook_field_settings_form().
  */
-function number_field_settings_form($field, $instance) {
+function number_field_settings_form($field, $instance, $has_data) {
   $settings = $field['settings'];
   $form = array();
 
@@ -107,6 +107,7 @@ function number_field_settings_form($field, $instance) {
       '#options' => drupal_map_assoc(range(10, 32)),
       '#default_value' => $settings['precision'],
       '#description' => t('The total number of digits to store in the database, including those to the right of the decimal.'),
+      '#disabled' => $has_data,
     );
     $form['scale'] = array(
       '#type' => 'select',
@@ -114,6 +115,7 @@ function number_field_settings_form($field, $instance) {
       '#options' => drupal_map_assoc(range(0, 10)),
       '#default_value' => $settings['scale'],
       '#description' => t('The number of digits to the right of the decimal.'),
+      '#disabled' => $has_data,
     );
     $form['decimal'] = array(
       '#type' => 'select',

@@ -1,0 +1,132 @@
+<?php
+// $Id: module.test,v 1.14 2009-09-29 18:08:28 webchick Exp $
+
+/**
+ * @file
+ * Tests for the module API.
+ */
+
+/**
+ * Unit tests for the module API.
+ */
+class ModuleUnitTest extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Module API',
+      'description' => 'Test low-level module functions.',
+      'group' => 'Module',
+    );
+  }
+
+  /**
+   * The basic functionality of module_list().
+   */
+  function testModuleList() {
+    // Build a list of modules, sorted alphabetically.
+    $profile_info = install_profile_info('default', 'en');
+    $module_list = $profile_info['dependencies'];
+
+    // Install profile is a module that is expected to be loaded.
+    $module_list[] = 'default';
+
+    sort($module_list);
+    // Compare this list to the one returned by module_list(). We expect them
+    // to match, since all default profile modules have a weight equal to 0
+    // (except for block.module, which has a lower weight but comes first in
+    // the alphabet anyway).
+    $this->assertModuleList($module_list, t('Default profile'));
+
+    // Try to install a new module.
+    drupal_install_modules(array('contact'));
+    $module_list[] = 'contact';
+    sort($module_list);
+    $this->assertModuleList($module_list, t('After adding a module'));
+
+    // Try to mess with the module weights.
+    db_update('system')
+      ->fields(array('weight' => 20))
+      ->condition('name', 'contact')
+      ->condition('type', 'module')
+      ->execute();
+    // Reset the module list.
+    module_list(TRUE);
+    // Move contact to the end of the array.
+    unset($module_list[array_search('contact', $module_list)]);
+    $module_list[] = 'contact';
+    $this->assertModuleList($module_list, t('After changing weights'));
+
+    // Test the fixed list feature.
+    $fixed_list = array(
+      'system' => array('filename' => drupal_get_path('module', 'system')),
+      'menu' => array('filename' => drupal_get_path('module', 'menu')),
+    );
+    module_list(FALSE, FALSE, FALSE, $fixed_list);
+    $new_module_list = array_combine(array_keys($fixed_list), array_keys($fixed_list));
+    $this->assertModuleList($new_module_list, t('When using a fixed list'));
+
+    // Reset the module list.
+    module_list(TRUE);
+    $this->assertModuleList($module_list, t('After reset'));
+  }
+
+  /**
+   * Assert that module_list() return the expected values.
+   *
+   * @param $expected_values
+   *   The expected values, sorted by weight and module name.
+   */
+  protected function assertModuleList(Array $expected_values, $condition) {
+    $expected_values = array_combine($expected_values, $expected_values);
+    $this->assertIdentical($expected_values, module_list(), t('@condition: module_list() returns correct results', array('@condition' => $condition)));
+    ksort($expected_values);
+    $this->assertIdentical($expected_values, module_list(FALSE, FALSE, TRUE), t('@condition: module_list() returns correctly sorted results', array('@condition' => $condition)));
+  }
+
+  /**
+   * Test module_implements() caching.
+   */
+  function testModuleImplements() {
+    // Clear the cache.
+    cache_clear_all('module_implements', 'cache');
+    $this->assertFalse(cache_get('module_implements'), t('The module implements cache is empty.'));
+    $this->drupalGet('');
+    $this->assertTrue(cache_get('module_implements'), t('The module implements cache is populated after requesting a page.'));
+
+    // Test again with an authenticated user.
+    $this->user = $this->drupalCreateUser();
+    $this->drupalLogin($this->user);
+    cache_clear_all('module_implements', 'cache');
+    $this->drupalGet('');
+    $this->assertTrue(cache_get('module_implements'), t('The module implements cache is populated after requesting a page.'));
+  }
+}
+
+/**
+ * Unit tests for module uninstallation and related hooks.
+ */
+class ModuleUninstallTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Module uninstallation',
+      'description' => 'Checks module uninstallation',
+      'group' => 'Module',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('module_test', 'user');
+  }
+
+  /**
+   * Tests the hook_modules_uninstalled() of the user module.
+   */
+  function testUserPermsUninstalled() {
+    // Uninstalls the module_test module, so hook_modules_uninstalled()
+    // is executed.
+    drupal_uninstall_modules(array('module_test'));
+
+    // Are the perms defined by module_test removed from {role_permission}.
+    $count = db_query("SELECT COUNT(rid) FROM {role_permission} WHERE permission = :perm", array(':perm' => 'module_test perm'))->fetchField();
+    $this->assertEqual(0, $count, t('Permissions were all removed.'));
+  }
+}
