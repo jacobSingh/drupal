@@ -40,7 +40,7 @@ function _update_update_form_update_table() {
   drupal_add_css('misc/ui/ui.dialog.css');
   drupal_add_js('misc/ui/ui.core.js', array('weight' => JS_LIBRARY + 5));
   drupal_add_js('misc/ui/ui.dialog.js', array('weight' => JS_LIBRARY + 6));
-  $form['#attached_js'][] = DRUPAL_ROOT . '/misc/plugin.js';
+  $form['#attached']['js'][] = DRUPAL_ROOT . '/misc/plugin.js';
 
   $form['#theme'] = 'update_available_updates_form';
   $form['projects'] = array();
@@ -48,46 +48,63 @@ function _update_update_form_update_table() {
   $options = array();
   $available = update_get_available(TRUE);
   if ($available) {
+
     module_load_include('inc', 'update', 'update.compare');
     $project_data = update_calculate_project_data($available);
     foreach ($project_data as $name => $project) {
-      // Filter out projects which are dev versions, updated or core
-      if (($project['install_type'] == 'dev') || ($project['project_type'] == 'core') || $project['status'] == UPDATE_CURRENT) {
+      // Filter out projects which are up2date already.
+      if ($project['status'] == UPDATE_CURRENT) {
         continue;
       }
+
+      $type = ""; // The type of update (security, recommended, manual, etc).
+      $options[$name] = array(); // An array of projects to create the table with.
+
+      
       $options[$name]['title'] = l($project['title'], $project['link']);
       if ($project['project_type'] == 'theme') {
         $options[$name]['title'] .= ' ' . t('(Theme)');
       }
+
       $options[$name]['installed_version'] = $project['existing_version'];
       $recommended_version = $project['releases'][$project['recommended']];
+
+      // Mark projects which are dev versions with no stable release or core as manual installs
+      if (($project['install_type'] == 'dev' && $recommended_version['version_extra'] == 'dev') || ($project['project_type'] == 'core')) {
+        $options[$name]['#manual_update'] = TRUE;
+      }
+
       $options[$name]['recommended_version'] = $recommended_version['version'] . ' ' . l(t('(Release notes)'), $recommended_version['release_link'], array('attributes' => array('title' => t('Release notes for @project_name', array('@project_name' => $project['title'])))));
+      
       if ($recommended_version['version_major'] != $project['existing_major']) {
         $options[$name]['recommended_version'] .= '<div title="Major upgrade warning" class="update-major-version-warning">' . t('This update is a major version update which means that it may not be backwards compatible with your currently running version.  It is recommended that you read the release notes and proceed at your own risk.') . '</div>';
       }
 
-      switch ($project['status']) {
-        case UPDATE_NOT_SECURE:
-        case UPDATE_REVOKED:
-          $options[$name]['title'] .= ' ' . t('(Security Update)');
-          $options[$name]['#weight'] = -2;
-          $type = 'security';
-          break;
-        case UPDATE_NOT_SUPPORTED:
-          $type = 'unsupported';
-          $options[$name]['title'] .= ' ' . t('(Unsupported)');
-          $options[$name]['#weight'] = -1;
-          break;
-        case UPDATE_UNKNOWN:
-        case UPDATE_NOT_FETCHED:
-        case UPDATE_NOT_CHECKED:
-        case UPDATE_NOT_CURRENT:
-          $type = 'recommended';
-          break;
-        default:
-          // Continues out of the switch and then out of the foreach.
-          continue 2;
+      if (empty($type)) {
+        switch ($project['status']) {
+          case UPDATE_NOT_SECURE:
+          case UPDATE_REVOKED:
+            $options[$name]['title'] .= ' ' . t('(Security Update)');
+            $options[$name]['#weight'] = -2;
+            $type = 'security';
+            break;
+          case UPDATE_NOT_SUPPORTED:
+            $type = 'unsupported';
+            $options[$name]['title'] .= ' ' . t('(Unsupported)');
+            $options[$name]['#weight'] = -1;
+            break;
+          case UPDATE_UNKNOWN:
+          case UPDATE_NOT_FETCHED:
+          case UPDATE_NOT_CHECKED:
+          case UPDATE_NOT_CURRENT:
+            $type = 'recommended';
+            break;
+          default:
+            // Continues out of the switch and then out of the foreach.
+            continue 2;
+        }
       }
+
     $options[$name]['#attributes'] = array('class' => array('update-' . $type));
     }
   }
@@ -98,29 +115,48 @@ function _update_update_form_update_table() {
     return $form;
   }
 
-  if (!count($options)) {
-    $form['message'] = array(
-      '#markup' => t('All of your projects are up to date.'),
-    );
-    return $form;
-  }
-
-  $form['#attached_css'][] = drupal_get_path('module', 'update') . '/update.css';
+  $form['#attached']['css'][] = drupal_get_path('module', 'update') . '/update.css';
 
   $headers = array('title' => array('data' => t('Name'), 'class' => array('update-project-name')), 'installed_version' => t('Installed version'), 'recommended_version' => t('Recommended version'));
   // This is the kill switch for being able to perform updates
   if (update_plugin_manager_access()) {
-    $form['projects'] = array(
-      '#type' => 'tableselect',
-      '#options' => $options,
-      '#header' => $headers,
-    );
+    $manual_updates = array();
+    foreach ($options as $key => $option) {
+      if (!empty($option['#manual_update'])) {
+        unset($option['#manual_update']);
+        $manual_updates[] = $option;
+        unset($options[$key]);
+      }
+    }
+    if (count($options)) {
+      $form['projects'] = array(
+        '#type' => 'tableselect',
+        '#options' => $options,
+        '#header' => $headers,
+      );
 
-    $form['submit'] = array(
-      '#type' => 'submit',
-      '#value' => t('Install these updates'),
-      '#weight' => 100,
-    );
+      $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Install these updates'),
+        '#weight' => 10,
+      );
+    }
+
+
+    if ($manual_updates) {
+      $form['manual_updates'] = array();
+      $form['manual_updates']['#prefix'] = '<h2>' . t('Add-ons requiring manual updates') . '</h2>';
+      $form['manual_updates']['#prefix'] .= '<p>' . t('Updates of development releases or Drupal core are not supported at this time ');
+      $form['manual_updates']['#type'] = "markup";
+      $form['manual_updates']['#markup'] = theme('table', $headers, $manual_updates);
+      $form['manual_updates']['#weight'] = 20;
+    }
+    elseif (!count($options)) {
+      $form['message'] = array(
+        '#markup' => t('All of your projects are up to date.'),
+      );
+      return $form;
+    }
   }
   else {
     $form['projects'] = array();
@@ -191,8 +227,6 @@ function update_update_form_submit($form, &$form_state) {
             $url,
           ),
         );
-        
-        $operations[] = array('update_batch_update_project', array($project));
       }
 
       $batch = array(
@@ -440,28 +474,6 @@ function update_batch_copy_project($project, $url, $filetransfer, &$context) {
   $context['results']['tasks'] += $tasks;
 
   $context['finished'] = 1;
-}
-
-/**
- * Set the batch to run the update functions.
- */
-function update_batch_update_project($project, &$context) {
-  
-  if (!empty($context['results']['log'][$project]['#abort'])) {
-    $context['#finished'] = 1;
-    return;
-  }
-  
-  if (_update_get_project_type($project) != 'module') {
-    $context['finished'] = 1;
-    return;
-  }
-  $operations = array();
-  require_once './includes/update.inc';
-
-  foreach (_update_get_schema_updates($project) as $update) {
-    update_do_one($project, $update, $context);
-  }
 }
 
 /**

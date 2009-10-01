@@ -115,6 +115,10 @@ table tbody tr.update-unsupported {
   background: #fcc;
 }
 
+table tbody tr.update-manual input{
+  display:none;
+}
+
 th.update-project-name {
   width: 50%;
 }

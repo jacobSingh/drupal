@@ -326,6 +326,13 @@ class ModuleUpdater extends Updater implements DrupalProjectUpdater{
     );
   }
 
+  function postUpdateTasks() {
+    // If there are schema updates
+    return array (
+      l(t('Run database updates for !project', array('!project' => $this->title)), 'update.php'),
+    );
+  }
+
 }
 
 class ThemeUpdater extends Updater implements DrupalProjectUpdater{
@@ -366,13 +373,6 @@ class ThemeUpdater extends Updater implements DrupalProjectUpdater{
   function postInstallTasks() {
     return array (
       l(t('Set the !project theme as default', array('!project' => $this->title)), 'admin/appearance'),
-    );
-  }
-
-  function postUpdateTasks() {
-    // If there are schema updates
-    return array (
-      l(t('Run database updates for !project', array('!project' => $this->title)), 'update.php'),
     );
   }
 }
