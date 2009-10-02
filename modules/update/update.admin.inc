@@ -79,7 +79,7 @@ function _update_update_form_update_table() {
       if ($recommended_version['version_major'] != $project['existing_major']) {
         $options[$name]['recommended_version'] .= '<div title="Major upgrade warning" class="update-major-version-warning">' . t('This update is a major version update which means that it may not be backwards compatible with your currently running version.  It is recommended that you read the release notes and proceed at your own risk.') . '</div>';
       }
-
+      
       if (empty($type)) {
         switch ($project['status']) {
           case UPDATE_NOT_SECURE:
@@ -211,9 +211,11 @@ function update_update_form_submit($form, &$form_state) {
   global $base_url;
   switch ($form_state['clicked_button']['#name']) {
     case 'process_updates':
-      
       $operations = array();
       foreach ($form_state['storage']['projects'] as $project) {
+
+        // @TODO: Present some type of warning when updating multi-site used modules.
+
         // Put this in the begining (download everything first)
         $operations[] = array('update_batch_get_project', array($project));
         $latest_version = _update_get_recommended_version($project);
@@ -465,7 +467,8 @@ function update_batch_copy_project($project, $url, $filetransfer, &$context) {
     }
   }
   catch (UpdaterError $e) {
-    _update_batch_create_message($context['results']['log'][$project], t("Error installing / updating)"), FALSE);
+    _update_batch_create_message($context['results']['log'][$project], t("Error installing / updating"), FALSE);
+    _update_batch_create_message($context['results']['log'][$project], $e->getMessage(), FALSE);
     $context['results']['log'][$project]['#abort'] = TRUE;
     return;
   }

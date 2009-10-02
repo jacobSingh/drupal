@@ -12,14 +12,17 @@
 require_once DRUPAL_ROOT . '/includes/filetransfer/filetransfer.inc';
 require_once DRUPAL_ROOT . '/includes/filetransfer/ftp.inc';
 require_once DRUPAL_ROOT . '/includes/filetransfer/ssh.inc';
+require_once DRUPAL_ROOT . '/modules/update/update.module';
+require_once DRUPAL_ROOT . '/modules/update/update.admin.inc';
 
 function plugin_filetransfer_form($form_state) {
   global $base_url;
   $form = array();
   $form['#action'] = url($base_url . '/plugin.php', array('absolute' => TRUE));
 
-  $form['#attached']['css'][] = drupal_get_path('module', 'update') . '/update.css';
-  $form['#attached']['js'][] = drupal_get_path('module', 'update') . '/update.js';
+  $form['#attached']['css'][] =  $base_url . '/modules/update/update.css';
+  $form['#attached']['js'][]  =  $base_url . '/modules/update/update.js';
+  
   // Get all the available ways to transfer files.
   $available_backends = module_invoke_all('filetransfer_backends');
   if (!count($available_backends)) {
@@ -131,19 +134,17 @@ function plugin_filetransfer_form($form_state) {
  * @see update_update_form
  */
 function plugin_filetransfer_form_validate($form, &$form_state) {
-  if ($form_state['clicked_button']['#name'] == 'process_updates') {
-    if (isset($form_state['values']['connection_settings'])) {
-      $backend = $form_state['values']['connection_settings']['update_filetransfer_default'];
-      $filetransfer = update_get_filetransfer($backend, $form_state['values']['connection_settings'][$backend]);
-      try {
-        if (!$filetransfer) {
-          throw new Exception($backend . " error, this type of connection protocol doesn't exist.");
-        }
-        $filetransfer->connect();
+  if (isset($form_state['values']['connection_settings'])) {
+    $backend = $form_state['values']['connection_settings']['update_filetransfer_default'];
+    $filetransfer = update_get_filetransfer($backend, $form_state['values']['connection_settings'][$backend]);
+    try {
+      if (!$filetransfer) {
+        throw new Exception($backend . " error, this type of connection protocol doesn't exist.");
       }
-      catch(Exception $e) {
-        form_set_error('connection_settings', $e->getMessage());
-      }
+      $filetransfer->connect();
+    }
+    catch(Exception $e) {
+      form_set_error('connection_settings', $e->getMessage());
     }
   }
 }
@@ -210,17 +211,15 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
  * @param <type> $filetransfer
  * @param <type> $mode
  */
-function _plugin_manager_create_and_setup_directories($filetransfer, $mode = 0755) {
+function _plugin_manager_create_and_setup_directories($filetransfer) {
   $updater_classes = update_get_updaters();
   
   foreach ($updater_classes as $class) {
     $install_location = call_user_func("{$class}::getInstallDirectory");
     // Make the parent dir writable if need be and create the dir.
-    if (!is_dir($install_location) && !is_writable(dirname($install_location))) {
-      $filetransfer->chmod(dirname($install_location), $mode, FALSE);
+    if (!is_dir($install_location)) {
       $filetransfer->createDirectory($install_location);
     }
-    $filetransfer->chmod($install_location, $mode, FALSE);
   }
 }
 

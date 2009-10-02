@@ -26,7 +26,7 @@ interface DrupalProjectUpdater {
   public static function getInstallDirectory();
 
   /**
-   * Determines if the directory in question is a module
+   * Determines the if the Updater can handle the project provided in $directory
    * @todo: Provide something more rational here, like a project spec file.
    * @param string $directory
    *
@@ -190,8 +190,12 @@ class Updater {
         throw new UpdaterError("Fatal error in update, cowardly refusing to wipe out the install directory");
       }
 
-      // Remove the existing installed file.
-      $ft->removeDirectory($args['install_dir'] . '/' . $this->name);
+      // If the plugin in instlaled in sites/all, we will put it in sites/default
+      
+      if (is_dir($args['install_dir'] . '/' . $this->name)) {
+        // Remove the existing installed file.
+        $ft->removeDirectory($args['install_dir'] . '/' . $this->name);
+      }
       // Copy the directory in place.
       $ft->copyDirectory($this->source, $args['install_dir']);
       // Run the updates
@@ -200,7 +204,7 @@ class Updater {
       // For now, just return a list of links of things to do.
       return $this->postUpdateTasks();
     } catch (FileTransferException $e) {
-      throw new UpdaterError(t("File Transfer failed, reason: !reason", array ('!reason' => t($e->getMessage(), $this->arguments))));
+      throw new UpdaterError(t("File Transfer failed, reason: !reason", array ('!reason' => t($e->getMessage(), $e->arguments))));
     }
   }
 
@@ -282,10 +286,6 @@ class ModuleUpdater extends Updater implements DrupalProjectUpdater{
   function isInstalled() {
     return (bool) drupal_get_path('module', $this->name);
   }
-  
-  function installProject() {
-
-  }
 
   static function canUpdateDirectory($directory) {
     if (file_scan_directory($directory, '/.*\.module/')) {
@@ -294,7 +294,15 @@ class ModuleUpdater extends Updater implements DrupalProjectUpdater{
     return FALSE;
   }
 
-  function getSchemeUpdates() {
+  static function canUpdate($project_name) {
+    return (bool) drupal_get_path('module', $project_name);
+  }
+
+  /**
+   * @todo: Not implemented
+   * @return <type>
+   */
+  function getSchemaUpdates() {
     require_once './includes/install.inc';
     require_once './includes/update.inc';
 
@@ -346,16 +354,16 @@ class ThemeUpdater extends Updater implements DrupalProjectUpdater{
     return (bool) drupal_get_path('theme', $this->name);
   }
 
-  function installProject() {
-
-  }
-
   static function canUpdateDirectory($directory) {
     // This is a shitty test, but don't know how else to confirm
     if (file_scan_directory($directory, '/.*\.module/')) {
       return FALSE;
     }
     return TRUE;
+  }
+
+  static function canUpdate($project_name) {
+    return (bool) drupal_get_path('theme', $project_name);
   }
 
   function postInstall() {
