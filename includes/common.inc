@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1004 2009-10-02 00:50:45 dries Exp $
+// $Id: common.inc,v 1.1008 2009-10-05 02:48:38 webchick Exp $
 
 /**
  * @file
@@ -3062,8 +3062,7 @@ function drupal_load_stylesheet_content($contents, $optimize = FALSE) {
     // Perform some safe CSS optimizations.
     $contents = preg_replace('<
       \s*([@{}:;,]|\)\s|\s\()\s* |  # Remove whitespace around separators, but keep space around parentheses.
-      /\*([^*\\\\]|\*(?!/))+\*/ |   # Remove comments that are not CSS hacks.
-      [\n\r]                        # Remove line breaks.
+      /\*([^*\\\\]|\*(?!/))+\*/     # Remove comments that are not CSS hacks.
       >x', '\1', $contents);
   }
 
@@ -3092,6 +3091,79 @@ function _drupal_load_stylesheet($matches) {
  */
 function drupal_clear_css_cache() {
   file_scan_directory('public://css', '/.*/', array('callback' => 'file_unmanaged_delete'));
+}
+
+/**
+ * Prepare a string for use as a valid identifier (element, class or ID name).
+ *
+ * http://www.w3.org/TR/CSS21/syndata.html#characters shows the syntax for valid
+ * identifiers (including element names, classes, and IDs in selectors.)
+ *
+ * @param $identifier
+ *   The identifier to clean.
+ * @param $filter
+ *   An array of string replacements to use on the identifier.
+ * @return
+ *   The cleaned identifier.
+ */
+function drupal_clean_html_identifier($identifier, $filter = array(' ' => '-', '_' => '-', '[' => '-', ']' => '')) {
+  // By default, we filter using Drupal's coding standards.
+  $identifier = strtr($identifier, $filter);
+
+  // Valid characters in a identifier are:
+  // - the hyphen (U+002D)
+  // - a-z (U+0030 - U+0039)
+  // - A-Z (U+0041 - U+005A)
+  // - the underscore (U+005F)
+  // - 0-9 (U+0061 - U+007A)
+  // - ISO 10646 characters U+00A1 and higher
+  // We strip out any character not in the above list.
+  $identifier = preg_replace('/[^\x{002D}\x{0030}-\x{0039}\x{0041}-\x{005A}\x{005F}\x{0061}-\x{007A}\x{00A1}-\x{FFFF}]/u', '', $identifier);
+
+  return $identifier;
+}
+
+/**
+ * Prepare a string for use as a valid class name.
+ *
+ * Do not pass one string containing multiple classes as they will be
+ * incorrectly concatenated with dashes, i.e. "one two" will become "one-two".
+ *
+ * @param $class
+ *   The class name to clean.
+ * @return
+ *   The cleaned class name.
+ */
+function drupal_html_class($class) {
+  return drupal_clean_html_identifier(drupal_strtolower($class));
+}
+
+/**
+ * Prepare a string for use as a valid HTML ID and guarantee uniqueness.
+ *
+ * @param $id
+ *   The ID to clean.
+ * @return
+ *   The cleaned ID.
+ */
+function drupal_html_id($id) {
+  $seen_ids = &drupal_static(__FUNCTION__, array());
+  $id = drupal_clean_html_identifier(drupal_strtolower($id));
+
+  // Ensure IDs are unique. The first occurrence is held but left alone.
+  // Subsequent occurrences get a number appended to them. This incrementing
+  // will almost certainly break code that relies on explicit HTML IDs in forms
+  // that appear more than once on the page, but the alternative is outputting
+  // duplicate IDs, which would break JS code and XHTML validity anyways. For
+  // now, it's an acceptable stopgap solution.
+  if (isset($seen_ids[$id])) {
+    $id = $id . '-' . ++$seen_ids[$id];
+  }
+  else {
+    $seen_ids[$id] = 1;
+  }
+
+  return $id;
 }
 
 /**
@@ -4734,6 +4806,10 @@ function drupal_common_theme() {
     ),
     'install_page' => array(
       'arguments' => array('content' => NULL),
+    ),
+    'region' => array(
+      'arguments' => array('elements' => NULL),
+      'template' => 'region',
     ),
     'task_list' => array(
       'arguments' => array('items' => NULL, 'active' => NULL),
