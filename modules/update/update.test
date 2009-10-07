@@ -239,7 +239,7 @@ class UpdateTestContribCase extends UpdateTestHelper {
     );
     variable_set('update_test_system_info', $system_info);
     $this->refreshUpdateStatus(array('drupal' => '0', '#all' => '1_0'));
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->standardTests();
     // We're expecting the report to say all projects are up to date.
     $this->assertText(t('Up to date'));
