@@ -84,7 +84,7 @@ function plugin_filetransfer_form($form_state) {
   // Build a hidden fieldset for each one.
   foreach ($available_backends as $name => $backend) {
     $form['connection_settings']['update_filetransfer_default']['#options'][$name] = $backend['title'];
-    $form['connection_settings'][$name] = array (
+    $form['connection_settings'][$name] = array(
       '#type' => 'fieldset',
       '#attributes' => array('class' => "filetransfer-$name filetransfer"),
       '#title' => t('@backend connection settings', array('@backend' => $backend['title'])),
@@ -115,7 +115,7 @@ function plugin_filetransfer_form($form_state) {
       $form['connection_settings']['update_filetransfer_default']['#disabled'] = TRUE;
 
       // Create a button for changing the type of connection.
-      $form['connection_settings']['change_connection_type'] = array (
+      $form['connection_settings']['change_connection_type'] = array(
         '#name' => 'change_connection_type',
         '#type' => 'submit',
         '#value' => t('Change connection type'),
@@ -143,7 +143,7 @@ function plugin_filetransfer_form_validate($form, &$form_state) {
       }
       $filetransfer->connect();
     }
-    catch(Exception $e) {
+    catch (Exception $e) {
       form_set_error('connection_settings', $e->getMessage());
     }
   }

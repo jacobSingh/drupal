@@ -38,7 +38,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
 
   // Determine if the current user has access to run update.php.
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
-  drupal_set_title('Updating your site');
+  drupal_set_title(ts('Updating your site'));
   drupal_maintenance_theme();
   
   if (empty($update_free_access) && $user->uid != 1) {
@@ -92,7 +92,7 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
 
     $output = "";
     $output .= get_plugin_report($results['messages']);
-    drupal_set_title('Update complete');
+    drupal_set_title(ts('Update complete'));
 
     $links = array();
     if (is_array($results['tasks'])) {
@@ -101,8 +101,8 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
     
 
     $links = array_merge($links, array(
-      l('Administration pages', 'admin'),
-      l('Front page', '<front>'),
+      l(ts('Administration pages'), 'admin'),
+      l(ts('Front page'), '<front>'),
     ));
 
     $output .= theme('item_list', $links);
@@ -113,7 +113,8 @@ if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
 
   if (isset($_GET['batch'])) {
     $output = _batch_page();
-  } else {
+  }
+  else {
 
     if (empty($_SESSION['plugin_op'])) {
       $output = t("It appears you have reached this page in error.");

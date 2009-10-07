@@ -142,11 +142,10 @@ function _update_update_form_update_table() {
       );
     }
 
-
     if ($manual_updates) {
       $form['manual_updates'] = array();
       $form['manual_updates']['#prefix'] = '<h2>' . t('Add-ons requiring manual updates') . '</h2>';
-      $form['manual_updates']['#prefix'] .= '<p>' . t('Updates of development releases or Drupal core are not supported at this time ');
+      $form['manual_updates']['#prefix'] .= '<p>' . t('Updates of development releases or Drupal core are not supported at this time');
       $form['manual_updates']['#type'] = "markup";
       $form['manual_updates']['#markup'] = theme('table', $headers, $manual_updates);
       $form['manual_updates']['#weight'] = 20;
@@ -325,7 +324,7 @@ function update_install_form_submit($form, &$form_state) {
     return;
   }
 
-  $project = drupal_substr($files[0]['filename'],0,-1); // Unfortunately, we can only use the directory name for this. :(
+  $project = drupal_substr($files[0]['filename'], 0, -1); // Unfortunately, we can only use the directory name for this. :(
   
   $project_location = DRUPAL_ROOT . '/' . file_directory_path('temporary') . '/update-extraction/' . $project;
   update_untar(drupal_realpath($local_cache));
@@ -616,7 +615,7 @@ function update_get_updaters() {
   $updaters = drupal_static(__FUNCTION__);
   if (!$updaters) {
     $updaters = array();
-    foreach(get_declared_classes() as $class) {
+    foreach (get_declared_classes() as $class) {
       if (in_array('DrupalProjectUpdater', class_implements($class))) {
         $updaters[] = $class;
       }

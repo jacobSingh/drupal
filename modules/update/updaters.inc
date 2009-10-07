@@ -1,5 +1,10 @@
 <?php
+// $Id$
 
+/**
+ * @file: Classes used for updating various things in Drupal via FileTransfers.
+ */
+ 
 /**
  * Interface for a class which can update a Drupal project.
  *
@@ -204,7 +209,7 @@ class Updater {
       // For now, just return a list of links of things to do.
       return $this->postUpdateTasks();
     } catch (FileTransferException $e) {
-      throw new UpdaterError(t("File Transfer failed, reason: !reason", array ('!reason' => t($e->getMessage(), $e->arguments))));
+      throw new UpdaterError(t("File Transfer failed, reason: !reason", array('!reason' => t($e->getMessage(), $e->arguments))));
     }
   }
 
@@ -232,7 +237,7 @@ class Updater {
       return $this->postInstallTasks();
     }
     catch (FileTransferException $e) {
-      throw new UpdateError(t("File Transfer failed, reason: !reason", array ('!reason' => t($e->getMessage(), $this->arguments))));
+      throw new UpdateError(t("File Transfer failed, reason: !reason", array('!reason' => t($e->getMessage(), $this->arguments))));
     }
   }
 
@@ -329,14 +334,14 @@ class ModuleUpdater extends Updater implements DrupalProjectUpdater{
    */
   function postInstallTasks() {
 
-    return array (
+    return array(
       l(t('Enable newly added modules in !project', array('!project' => $this->title)), 'admin/config/modules'),
     );
   }
 
   function postUpdateTasks() {
     // If there are schema updates
-    return array (
+    return array(
       l(t('Run database updates for !project', array('!project' => $this->title)), 'update.php'),
     );
   }
@@ -379,7 +384,7 @@ class ThemeUpdater extends Updater implements DrupalProjectUpdater{
   }
   
   function postInstallTasks() {
-    return array (
+    return array(
       l(t('Set the !project theme as default', array('!project' => $this->title)), 'admin/appearance'),
     );
   }
@@ -397,4 +402,3 @@ class ProfileUpdater extends Updater {
 class UpdaterError extends Exception {
   
 }
-?>
