@@ -20,116 +20,119 @@ define('DRUPAL_ROOT', getcwd());
  */
 define('MAINTENANCE_MODE', 'update');
 
-require_once DRUPAL_ROOT . '/includes/plugin.inc';
-
 // Some unavoidable errors happen because the database is not yet up-to-date.
 // Our custom error handler is not yet installed, so we just suppress them.
 ini_set('display_errors', FALSE);
 
-if (realpath($_SERVER['SCRIPT_FILENAME']) == __FILE__) {
+require_once DRUPAL_ROOT . '/includes/bootstrap.inc';
 
-  // We prepare a minimal bootstrap for the update requirements check to avoid
-  // reaching the PHP memory limit.
-  require_once DRUPAL_ROOT . '/includes/bootstrap.inc';
-  require_once DRUPAL_ROOT . '/includes/update.inc';
-  include_once DRUPAL_ROOT . '/includes/install.inc';
-  include_once DRUPAL_ROOT . '/includes/batch.inc';
-  include_once DRUPAL_ROOT . '/modules/update/update.admin.inc';
+// Access check
+drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
+if (empty($update_free_access) && $user->uid != 1) {
+  print theme('update_page', $output, !$progress_page);
+  exit;
+}
 
-  // Determine if the current user has access to run update.php.
-  drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
-  drupal_set_title(ts('Updating your site'));
-  drupal_maintenance_theme();
-  
-  if (empty($update_free_access) && $user->uid != 1) {
-    print theme('update_page', $output, !$progress_page);
-    exit;
+// We prepare a minimal bootstrap.
+drupal_bootstrap(DRUPAL_BOOTSTRAP_VARIABLES);
+
+// This must go after drupal_bootstrap(), which unsets globals!
+global $conf;
+
+// Load barebones libraries.
+require_once DRUPAL_ROOT . '/includes/common.inc';
+require_once DRUPAL_ROOT . '/includes/batch.inc';
+require_once DRUPAL_ROOT . '/includes/form.inc';
+require_once DRUPAL_ROOT . '/includes/file.inc';
+require_once DRUPAL_ROOT . '/includes/path.inc';
+
+// Load module basics (needed for hook invokes).
+require_once DRUPAL_ROOT . '/includes/module.inc';
+require_once DRUPAL_ROOT . '/includes/session.inc';
+require_once DRUPAL_ROOT . '/includes/entity.inc';
+
+$module_list['system']['filename'] = 'modules/system/system.module';
+$module_list['update']['filename'] = 'modules/update/update.module';
+$module_list['user']['filename'] = 'modules/user/user.module';
+module_list(TRUE, FALSE, FALSE, $module_list);
+drupal_load('module', 'system');
+drupal_load('module', 'update');
+drupal_load('module', 'user');
+
+// Includes needed specifically for the upgrade / install process.
+require_once DRUPAL_ROOT . '/includes/plugin.inc';
+require_once DRUPAL_ROOT . '/modules/update/update.admin.inc';
+
+drupal_path_initialize();
+drupal_language_initialize();
+
+drupal_set_title(t('Updating your site'));
+drupal_maintenance_theme();
+
+/**
+ * This case occurrs when the operation has been run, and a report needs to be shown.
+ * Currently uses the update.php report, although should be changed.
+ *
+ * @todo: pretty up this report.
+ */
+if (isset($_SESSION['update_batch_results']) && $results = $_SESSION['update_batch_results']) {
+
+  //Clear the session out;
+  unset($_SESSION['update_batch_results']);
+
+  //Add the update.php functions and css
+  include_once './includes/update.inc';
+  drupal_add_css('modules/system/maintenance.css');
+
+  if ($results['success']) {
+    variable_set('site_offline', FALSE);
+    drupal_set_message(t("Update was completed successfully!  Your site has been taken out of maintenance mode."));
   }
-  global $base_url;
-  
-  //module_list(TRUE, FALSE, $module_list);
+  else {
+    drupal_set_message(t("Update failed! See the log below for more information. Your site is still in maintenance mode"), 'error');
+  }
 
-  // Turn error reporting back on. From now on, only fatal errors (which are
-  // not passed through the error handler) will cause a message to be printed.
-  ini_set('display_errors', TRUE);
+  $output = "";
+  $output .= get_plugin_report($results['messages']);
+  drupal_set_title(t('Update complete'));
 
-  
-  drupal_load_updates();
+  // These links are returned by the Updaters as "next tasks" to complete.
+  $links = array();
+  if (is_array($results['tasks'])) {
+    $links += $results['tasks'];
+  }
 
-  update_fix_d7_requirements();
-  update_fix_compatibility();
-  
-  if (isset($_SESSION['update_batch_results']) && $results = $_SESSION['update_batch_results']) {
-    // If this variable is set it means that the user entered FTP details because
-    // they needed to chmod the sites/default/* dirs.  We want to set them back.
-    if (isset($_SESSION['filetransfer_settings'])) {
-      $filetransfer_settings = $_SESSION['filetransfer_settings'];
+  $links = array_merge($links, array(
+    l(t('Administration pages'), 'admin'),
+    l(t('Front page'), '<front>'),
+  ));
 
-      // This contains the user's sensative credentials, we have to make sure
-      // that it gets unset.
-      unset($_SESSION['filetransfer_settings']);
-      
-      $filetransfer_backend = variable_get('update_filetransfer_default', NULL);
-      $ft = update_get_filetransfer($filetransfer_backend, $filetransfer_settings);
-      // This sets the permissions to non-writable for everyone.
-      _plugin_manager_create_and_setup_directories($ft, 0755);
-    }
-    
-    //Clear the session out;
-    unset($_SESSION['update_batch_results']);
+  $output .= theme('item_list', $links);
 
-    //Add the update.php functions and css
-    include_once './includes/update.inc';
-    drupal_add_css('modules/system/maintenance.css');
+  print theme('update_page', $output);
+  return;
+}
 
-    if ($results['success']) {
-      variable_set('site_offline', FALSE);
-      drupal_set_message(t("Update was completed successfully!  Your site has been taken out of maintenance mode."));
-    }
-    else {
-      drupal_set_message(t("Update failed! See the log below for more information. Your site is still in maintenance mode"), 'error');
-    }
-
-    $output = "";
-    $output .= get_plugin_report($results['messages']);
-    drupal_set_title(ts('Update complete'));
-
-    $links = array();
-    if (is_array($results['tasks'])) {
-      $links += $results['tasks'];
-    }
-    
-
-    $links = array_merge($links, array(
-      l(ts('Administration pages'), 'admin'),
-      l(ts('Front page'), '<front>'),
-    ));
-
-    $output .= theme('item_list', $links);
-
+/**
+ * If a batch is running, let it run.
+ */
+if (isset($_GET['batch'])) {
+  $output = _batch_page();
+}
+else {
+  if (empty($_SESSION['plugin_op'])) {
+    $output = t("It appears you have reached this page in error.");
     print theme('update_page', $output);
     return;
   }
-
-  if (isset($_GET['batch'])) {
-    $output = _batch_page();
+  elseif (!$batch = batch_get()) {
+    // We have a batch to process, show the filetransfer form.
+    $output = drupal_render(drupal_get_form('plugin_filetransfer_form'));
   }
-  else {
+}
 
-    if (empty($_SESSION['plugin_op'])) {
-      $output = t("It appears you have reached this page in error.");
-      print theme('update_page', $output);
-      return;
-    }
-    elseif (!$batch = batch_get()) {
-      // We have a batch to process, show the filetransfer form.
-      $output = drupal_render(drupal_get_form('plugin_filetransfer_form'));
-    }
-  }
-
-  if (!empty($output)) {
-    // We defer the display of messages until all updates are done.
-    $progress_page = ($batch = batch_get()) && isset($batch['running']);
-    print theme('update_page', $output, !$progress_page);
-  }
+if (!empty($output)) {
+  // We defer the display of messages until all updates are done.
+  $progress_page = ($batch = batch_get()) && isset($batch['running']);
+  print theme('update_page', $output, !$progress_page);
 }

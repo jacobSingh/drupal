@@ -201,6 +201,7 @@ class Updater {
         // Remove the existing installed file.
         $ft->removeDirectory($args['install_dir'] . '/' . $this->name);
       }
+
       // Copy the directory in place.
       $ft->copyDirectory($this->source, $args['install_dir']);
       // Run the updates

@@ -421,7 +421,7 @@ function update_batch_copy_project($project, $url, $filetransfer, &$context) {
     $context['results']['log'] = array();
   }
 
-  if (!$context['results']['tasks']) {
+  if (!isset($context['results']['tasks'])) {
     $context['results']['tasks'] = array();
   }
 
