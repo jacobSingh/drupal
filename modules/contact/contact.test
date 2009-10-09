@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.test,v 1.32 2009-10-08 08:16:54 webchick Exp $
+// $Id: contact.test,v 1.35 2009-10-09 02:54:10 dries Exp $
 
 /**
  * Test the sitewide contact form.
@@ -22,9 +22,9 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
    */
   function testSiteWideContact() {
     // Create and login administrative user.
-    $admin_user = $this->drupalCreateUser(array('access site-wide contact form', 'administer site-wide contact form', 'administer users'));
+    $admin_user = $this->drupalCreateUser(array('access site-wide contact form', 'administer contact forms', 'administer users'));
     $this->drupalLogin($admin_user);
-    
+
     $flood_limit = 3;
     variable_set('contact_threshold_limit', $flood_limit);
     variable_set('contact_threshold_window', 600);
@@ -64,7 +64,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     // Create first valid category.
     $recipients = array('simpletest@example.com', 'simpletest2@example.com', 'simpletest3@example.com');
     $this->addCategory($category = $this->randomName(16), implode(',', array($recipients[0])), '', TRUE);
-    $this->assertRaw(t('Category %category has been added.', array('%category' => $category)), t('Category successfully added.'));
+    $this->assertRaw(t('Category %category has been saved.', array('%category' => $category)), t('Category successfully saved.'));
 
     // Make sure the newly created category is included in the list of categories.
     $this->assertNoUniqueText($category, t('New category included in categories list.'));
@@ -77,7 +77,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     $this->assertEqual($category_array['recipients'], $recipients_str);
     $this->assertEqual($category_array['reply'], $reply);
     $this->assertFalse($category_array['selected']);
-    $this->assertRaw(t('Category %category has been updated.', array('%category' => $category)), t('Category successfully updated.'));
+    $this->assertRaw(t('Category %category has been saved.', array('%category' => $category)), t('Category successfully saved.'));
 
     // Ensure that the contact form is shown without a category selection input.
     user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, array('access site-wide contact form'));
@@ -89,10 +89,10 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
 
     // Add more categories.
     $this->addCategory($category = $this->randomName(16), implode(',', array($recipients[0], $recipients[1])), '', FALSE);
-    $this->assertRaw(t('Category %category has been added.', array('%category' => $category)), t('Category successfully added.'));
+    $this->assertRaw(t('Category %category has been saved.', array('%category' => $category)), t('Category successfully saved.'));
 
     $this->addCategory($category = $this->randomName(16), implode(',', array($recipients[0], $recipients[1], $recipients[2])), '', FALSE);
-    $this->assertRaw(t('Category %category has been added.', array('%category' => $category)), t('Category successfully added.'));
+    $this->assertRaw(t('Category %category has been saved.', array('%category' => $category)), t('Category successfully saved.'));
 
     // Clear flood table in preparation for flood test and allow other checks to complete.
     db_delete('flood')->execute();
@@ -156,7 +156,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
   */
   function testAutoReply() {
     // Create and login administrative user.
-    $admin_user = $this->drupalCreateUser(array('access site-wide contact form', 'administer site-wide contact form', 'administer permissions', 'administer users'));
+    $admin_user = $this->drupalCreateUser(array('access site-wide contact form', 'administer contact forms', 'administer permissions', 'administer users'));
     $this->drupalLogin($admin_user);
 
     // Set up three categories, 2 with an auto-reply and one without.
@@ -169,7 +169,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     // Test the auto-reply for category 'foo'.
     $email = $this->randomName(32) . '@example.com';
     $subject = $this->randomString(64);
-    $this->submitContact($this->randomName(16), $email, $subject, 1, $this->randomString(128));
+    $this->submitContact($this->randomName(16), $email, $subject, 2, $this->randomString(128));
 
     // We are testing the auto-reply, so there should be one e-mail going to the sender.
     $captured_emails = $this->drupalGetMails(array('id' => 'contact_page_autoreply', 'to' => $email, 'from' => 'foo@example.com'));
@@ -178,7 +178,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
 
     // Test the auto-reply for category 'bar'.
     $email = $this->randomName(32) . '@example.com';
-    $this->submitContact($this->randomName(16), $email, $this->randomString(64), 2, $this->randomString(128));
+    $this->submitContact($this->randomName(16), $email, $this->randomString(64), 3, $this->randomString(128));
 
     // Auto-reply for category 'bar' should result in one auto-reply e-mail to the sender.
     $captured_emails = $this->drupalGetMails(array('id' => 'contact_page_autoreply', 'to' => $email, 'from' => 'bar@example.com'));
@@ -187,7 +187,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
 
     // Verify that no auto-reply is sent when the auto-reply field is left blank.
     $email = $this->randomName(32) . '@example.com';
-    $this->submitContact($this->randomName(16), $email, $this->randomString(64), 3, $this->randomString(128));
+    $this->submitContact($this->randomName(16), $email, $this->randomString(64), 4, $this->randomString(128));
     $captured_emails = $this->drupalGetMails(array('id' => 'contact_page_autoreply', 'to' => $email, 'from' => 'no_autoreply@example.com'));
     $this->assertEqual(count($captured_emails), 0, t('No auto-reply e-mail was sent to the sender for category "no-autoreply".'), t('Contact'));
   }
@@ -290,9 +290,9 @@ class ContactPersonalTestCase extends DrupalWebTestCase {
    * Test personal contact form.
    */
   function testPersonalContact() {
-    $admin_user = $this->drupalCreateUser(array('administer site-wide contact form', 'administer users'));
+    $admin_user = $this->drupalCreateUser(array('administer contact forms', 'administer users'));
     $this->drupalLogin($admin_user);
-    
+
     $flood_limit = 3;
     variable_set('contact_threshold_limit', $flood_limit);
 

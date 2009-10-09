@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.admin.inc,v 1.61 2009-10-03 01:16:02 dries Exp $
+// $Id: menu.admin.inc,v 1.63 2009-10-09 08:02:24 webchick Exp $
 
 /**
  * @file
@@ -14,22 +14,22 @@ function menu_overview_page() {
   $header = array(t('Title'), array('data' => t('Operations'), 'colspan' => '3'));
   $rows = array();
   foreach ($result as $menu) {
-    $row = array(theme('menu_admin_overview', $menu['title'], $menu['menu_name'], $menu['description']));
+    $row = array(theme('menu_admin_overview', array('title' => $menu['title'], 'name' => $menu['menu_name'], 'description' => $menu['description'])));
     $row[] = array('data' => l(t('list links'), 'admin/structure/menu/manage/' . $menu['menu_name']));
     $row[] = array('data' => l(t('edit menu'), 'admin/structure/menu/manage/' . $menu['menu_name'] . '/edit'));
     $row[] = array('data' => l(t('add link'), 'admin/structure/menu/manage/' . $menu['menu_name'] . '/add'));
     $rows[] = $row;
   }
 
-  return theme('table', $header, $rows);
+  return theme('table', array('header' => $header, 'rows' => $rows));
 }
 
 /**
  * Theme the menu title and description for admin page
  */
-function theme_menu_admin_overview($title, $name, $description) {
-  $output = check_plain($title);
-  $output .= '<div class="description">' . filter_xss_admin($description) . '</div>';
+function theme_menu_admin_overview($variables) {
+  $output = check_plain($variables['title']);
+  $output .= '<div class="description">' . filter_xss_admin($variables['description']) . '</div>';
 
   return $output;
 }
@@ -186,7 +186,9 @@ function menu_overview_form_submit($form, &$form_state) {
  *
  * @ingroup themeable
  */
-function theme_menu_overview_form($form) {
+function theme_menu_overview_form($variables) {
+  $form = $variables['form'];
+
   drupal_add_tabledrag('menu-overview', 'match', 'parent', 'menu-plid', 'menu-plid', 'menu-mlid', TRUE, MENU_MAX_DEPTH - 1);
   drupal_add_tabledrag('menu-overview', 'order', 'sibling', 'menu-weight');
 
@@ -220,7 +222,7 @@ function theme_menu_overview_form($form) {
       $element['plid']['#type'] = 'hidden';
 
       $row = array();
-      $row[] = theme('indentation', $element['#item']['depth'] - 1) . drupal_render($element['title']);
+      $row[] = theme('indentation', array('size' => $element['#item']['depth'] - 1)) . drupal_render($element['title']);
       $row[] = array('data' => drupal_render($element['hidden']), 'class' => array('checkbox'));
       $row[] = array('data' => drupal_render($element['expanded']), 'class' => array('checkbox'));
       $row[] = drupal_render($element['weight']) . drupal_render($element['plid']) . drupal_render($element['mlid']);
@@ -235,7 +237,7 @@ function theme_menu_overview_form($form) {
   if (empty($rows)) {
     $rows[] = array(array('data' => $form['#empty_text'], 'colspan' => '7'));
   }
-  $output .= theme('table', $header, $rows, array('id' => 'menu-overview'));
+  $output .= theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'menu-overview')));
   $output .= drupal_render_children($form);
   return $output;
 }
@@ -406,7 +408,11 @@ function menu_edit_item_submit($form, &$form_state) {
  */
 function menu_edit_menu($form, &$form_state, $type, $menu = array()) {
   $system_menus = menu_list_system_menus();
-  $menu += array('menu_name' => '', 'title' => '', 'description' => '');
+  $menu += array('menu_name' => '', 'old_name' => '', 'title' => '', 'description' => '');
+  if (!empty($menu['menu_name'])) {
+    $menu['old_name'] = $menu['menu_name'];
+  }
+  $form['old_name'] = array('#type' => 'value', '#value' => $menu['old_name']);
 
   // The title of a system menu cannot be altered.
   if (isset($system_menus[$menu['menu_name']])) {
@@ -423,7 +429,7 @@ function menu_edit_menu($form, &$form_state, $type, $menu = array()) {
   }
 
   // The internal menu name can only be defined during initial menu creation.
-  if ($type == 'edit') {
+  if (!empty($menu['old_name'])) {
     $form['#insert'] = FALSE;
     $form['menu_name'] = array('#type' => 'value', '#value' => $menu['menu_name']);
   }
@@ -514,41 +520,28 @@ function menu_delete_menu_confirm($form, &$form_state, $menu) {
 function menu_delete_menu_confirm_submit($form, &$form_state) {
   $menu = $form['#menu'];
   $form_state['redirect'] = 'admin/structure/menu';
+
   // System-defined menus may not be deleted - only menus defined by this module.
   $system_menus = menu_list_system_menus();
   if (isset($system_menus[$menu['menu_name']])  || !(db_query("SELECT 1 FROM {menu_custom} WHERE menu_name = :menu", array(':menu' => $menu['menu_name']))->fetchField())) {
     return;
   }
-  // Reset all the menu links defined by the system via hook_menu.
+
+  // Reset all the menu links defined by the system via hook_menu().
   $result = db_query("SELECT * FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.menu_name = :menu AND ml.module = 'system' ORDER BY m.number_parts ASC", array(':menu' => $menu['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
-  foreach ($result as $item) {
-    menu_reset_item($item);
+  foreach ($result as $link) {
+    menu_reset_item($link);
   }
+
   // Delete all links to the overview page for this menu.
   $result = db_query("SELECT mlid FROM {menu_links} ml WHERE ml.link_path = :link", array(':link' => 'admin/structure/menu/manage/' . $menu['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
-  foreach ($result as $m) {
-    menu_link_delete($m['mlid']);
+  foreach ($result as $link) {
+    menu_link_delete($link['mlid']);
   }
-  // Delete all the links in the menu and the menu from the list of custom menus.
-  db_delete('menu_links')
-    ->condition('menu_name', $menu['menu_name'])
-    ->execute();
-  db_delete('menu_custom')
-    ->condition('menu_name', $menu['menu_name'])
-    ->execute();
-  // Delete all the blocks for this menu.
-  if (module_exists('block')) {
-    db_delete('block')
-      ->condition('module', 'menu')
-      ->condition('delta', $menu['menu_name'])
-      ->execute();
-    db_delete('block_role')
-      ->condition('module', 'menu')
-      ->condition('delta', $menu['menu_name'])
-      ->execute();
-  }
-  menu_cache_clear_all();
-  cache_clear_all();
+
+  // Delete the custom menu and all its menu links.
+  menu_delete($menu);
+
   $t_args = array('%title' => $menu['title']);
   drupal_set_message(t('The custom menu %title has been deleted.', $t_args));
   watchdog('menu', 'Deleted custom menu %title and all its menu links.', $t_args, WATCHDOG_NOTICE);
@@ -569,8 +562,8 @@ function menu_edit_menu_validate($form, &$form_state) {
 
     // We will add 'menu-' to the menu name to help avoid name-space conflicts.
     $item['menu_name'] = 'menu-' . $item['menu_name'];
-    $custom_exists = db_query('SELECT menu_name FROM {menu_custom} WHERE menu_name = :menu', array(':menu' => $item['menu_name']))->fetchField();
-    $link_exists = db_query_range("SELECT menu_name FROM {menu_links} WHERE menu_name = :menu", 0, 1, array(':menu' => $item['menu_name']))->fetchField();
+    $custom_exists = db_query_range('SELECT 1 FROM {menu_custom} WHERE menu_name = :menu', 0, 1, array(':menu' => $item['menu_name']))->fetchField();
+    $link_exists = db_query_range("SELECT 1 FROM {menu_links} WHERE menu_name = :menu", 0, 1, array(':menu' => $item['menu_name']))->fetchField();
     if ($custom_exists || $link_exists) {
       form_set_error('menu_name', t('The menu already exists.'));
     }
@@ -597,22 +590,10 @@ function menu_edit_menu_submit($form, &$form_state) {
     ->fetchField();
 
     menu_link_save($link);
-    db_insert('menu_custom')
-      ->fields(array(
-        'menu_name' => $menu['menu_name'],
-        'title' => $menu['title'],
-        'description' => $menu['description'],
-      ))
-      ->execute();
+    menu_save($menu);
   }
   else {
-    db_update('menu_custom')
-      ->fields(array(
-        'title' => $menu['title'],
-        'description' => $menu['description'],
-      ))
-      ->condition('menu_name', $menu['menu_name'])
-      ->execute();
+    menu_save($menu);
     $result = db_query("SELECT mlid FROM {menu_links} WHERE link_path = :path", array(':path' => $path . $menu['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
     foreach ($result as $m) {
       $link = menu_link_load($m['mlid']);

@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.775 2009-09-29 15:31:14 dries Exp $
+// $Id: comment.module,v 1.778 2009-10-09 07:19:43 webchick Exp $
 
 /**
  * @file
@@ -142,7 +142,7 @@ function comment_theme() {
       'arguments' => array('elements' => NULL),
     ),
     'comment_post_forbidden' => array(
-      'arguments' => array('nid' => NULL),
+      'arguments' => array('node' => NULL),
     ),
     'comment_wrapper' => array(
       'template' => 'comment-wrapper',
@@ -170,7 +170,8 @@ function comment_menu() {
     'weight' => -10,
   );
   $items['admin/content/comment/approval'] = array(
-    'title' => 'Approval queue',
+    'title' => 'Unapproved comments',
+    'title callback' => 'comment_count_unpublished',
     'page arguments' => array('approval'),
     'access arguments' => array('administer comments'),
     'type' => MENU_LOCAL_TASK,
@@ -216,6 +217,16 @@ function comment_menu() {
   );
 
   return $items;
+}
+
+/**
+ * Returns a menu title which includes the number of unapproved comments.
+ */
+function comment_count_unpublished() {
+  $count = db_query('SELECT COUNT(cid) FROM {comment} WHERE status = :status', array(
+    ':status' => COMMENT_NOT_PUBLISHED,
+  ))->fetchField();
+  return t('Unapproved comments (@count)', array('@count' => $count));
 }
 
 /**
@@ -414,8 +425,8 @@ function comment_get_recent($number = 10) {
  *   "page=X" if the page number is greater than zero; empty string otherwise.
  */
 function comment_new_page_count($num_comments, $new_replies, $node) {
-  $comments_per_page = _comment_get_display_setting('comments_per_page', $node);
-  $mode = _comment_get_display_setting('mode', $node);
+  $mode = variable_get('comment_default_mode_' . $node->type, COMMENT_MODE_THREADED);
+  $comments_per_page = variable_get('comment_default_per_page_' . $node->type, 50);
   $pagenum = NULL;
   $flat = $mode == COMMENT_MODE_FLAT ? TRUE : FALSE;
   if ($num_comments <= $comments_per_page) {
@@ -466,7 +477,7 @@ function theme_comment_block() {
   }
 
   if ($items) {
-    return theme('item_list', $items);
+    return theme('item_list', array('items' => $items));
   }
 }
 
@@ -522,7 +533,7 @@ function comment_node_view($node, $build_mode) {
               );
             }
             else {
-              $links['comment_forbidden']['title'] = theme('comment_post_forbidden', $node);
+              $links['comment_forbidden']['title'] = theme('comment_post_forbidden', array('node' => $node));
             }
           }
         }
@@ -547,7 +558,7 @@ function comment_node_view($node, $build_mode) {
           }
         }
         else {
-          $links['comment_forbidden']['title'] = theme('comment_post_forbidden', $node);
+          $links['comment_forbidden']['title'] = theme('comment_post_forbidden', array('node' => $node));
         }
       }
     }
@@ -586,7 +597,9 @@ function comment_node_page_additions($node) {
   // Unpublished comments are not included in $node->comment_count, so show
   // comments unconditionally if the user is an administrator.
   if ($node->comment_count || user_access('administer comments')) {
-    if ($cids = comment_get_thread($node)) {
+    $mode = variable_get('comment_default_mode_' . $node->type, COMMENT_MODE_THREADED);
+    $comments_per_page = variable_get('comment_default_per_page_' . $node->type, 50);
+    if ($cids = comment_get_thread($node, $mode, $comments_per_page)) {
       $comments = comment_load_multiple($cids);
       comment_prepare_thread($comments);
       $build = comment_build_multiple($comments, $node);
@@ -615,10 +628,14 @@ function comment_node_page_additions($node) {
 }
 
 /**
- * Retrieve comment(s) for a thread.
+ * Retrieve comments for a thread.
  *
  * @param $node
  *   The node whose comment(s) needs rendering.
+ * @param $mode
+ *   The comment display mode; COMMENT_MODE_FLAT or COMMENT_MODE_THREADED.
+ * @param $comments_per_page
+ *   The amount of comments to display per page.
  *
  * To display threaded comments in the correct order we keep a 'thread' field
  * and order by that value. This field keeps this data in
@@ -674,10 +691,7 @@ function comment_node_page_additions($node) {
  * spoil the reverse ordering, "ORDER BY thread ASC" -- here, we do not need
  * to consider the trailing "/" so we use a substring only.
  */
- function comment_get_thread($node) {
-  $mode = _comment_get_display_setting('mode', $node);
-  $comments_per_page = _comment_get_display_setting('comments_per_page', $node);
-
+function comment_get_thread($node, $mode, $comments_per_page) {
   $query = db_select('comment', 'c')->extend('PagerDefault');
   $query->addField('c', 'cid');
   $query
@@ -783,7 +797,7 @@ function comment_build($comment, $node, $build_mode = 'full') {
   );
 
   $prefix = '';
-  $is_threaded = isset($comment->divs) && _comment_get_display_setting('mode', $node) == COMMENT_MODE_THREADED;
+  $is_threaded = isset($comment->divs) && variable_get('comment_default_mode_' . $node->type, COMMENT_MODE_THREADED) == COMMENT_MODE_THREADED;
 
   // Add 'new' anchor if needed.
   if (!empty($comment->first_new)) {
@@ -901,7 +915,7 @@ function comment_links($comment, $node) {
       );
     }
     else {
-      $links['comment_forbidden']['title'] = theme('comment_post_forbidden', $node);
+      $links['comment_forbidden']['title'] = theme('comment_post_forbidden', array('node' => $node));
       $links['comment_forbidden']['html'] = TRUE;
     }
   }
@@ -1736,7 +1750,7 @@ function comment_form($form, &$form_state, $comment) {
       $form['_author'] = array(
         '#type' => 'item',
         '#title' => t('Your name'),
-        '#markup' => theme('username', $user),
+        '#markup' => theme('username', array('account' => $user)),
       );
       $form['author'] = array(
         '#type' => 'value',
@@ -2093,19 +2107,19 @@ function template_preprocess_comment(&$variables) {
   $node = $variables['elements']['#node'];
   $variables['comment']   = $comment;
   $variables['node']      = $node;
-  $variables['author']    = theme('username', $comment);
+  $variables['author']    = theme('username', array('account' => $comment));
   $variables['date']      = format_date($comment->timestamp);
   $variables['new']       = !empty($comment->new) ? t('new') : '';
-  $variables['picture']   = theme_get_setting('toggle_comment_user_picture') ? theme('user_picture', $comment) : '';
+  $variables['picture']   = theme_get_setting('toggle_comment_user_picture') ? theme('user_picture', array('account' => $comment)) : '';
   $variables['signature'] = $comment->signature;
   $variables['title']     = l($comment->subject, 'comment/' . $comment->cid, array('fragment' => "comment-$comment->cid"));
   $variables['template_files'][] = 'comment-' . $variables['node']->type;
-  
+
   // Helpful $content variable for templates.
   foreach (element_children($variables['elements']) as $key) {
     $variables['content'][$key] = $variables['elements'][$key];
   }
-  
+
   // Set status to a string representation of comment->status.
   if (isset($comment->in_preview)) {
     $variables['status']  = 'comment-preview';
@@ -2137,11 +2151,14 @@ function template_preprocess_comment(&$variables) {
 /**
  * Theme a "you can't post comments" notice.
  *
- * @param $node
- *   The comment node.
+ * @param $variables
+ *   An associative array containing:
+ *   - node: The comment node.
+ *
  * @ingroup themeable
  */
-function theme_comment_post_forbidden($node) {
+function theme_comment_post_forbidden($variables) {
+  $node = $variables['node'];
   global $user;
 
   if (!$user->uid) {
@@ -2180,7 +2197,7 @@ function theme_comment_post_forbidden($node) {
 function template_preprocess_comment_wrapper(&$variables) {
   // Provide contextual information.
   $variables['node'] = $variables['content']['#node'];
-  $variables['display_mode'] = _comment_get_display_setting('mode', $variables['node']);
+  $variables['display_mode'] = variable_get('comment_default_mode_' . $variables['node']->type, COMMENT_MODE_THREADED);
   $variables['template_files'][] = 'comment-wrapper-' . $variables['node']->type;
 }
 
@@ -2203,27 +2220,6 @@ function _comment_get_modes() {
  */
 function _comment_per_page() {
   return drupal_map_assoc(array(10, 30, 50, 70, 90, 150, 200, 250, 300));
-}
-
-/**
- * Return a current comment display setting
- *
- * @param $setting
- *   can be one of these: 'mode', 'sort', 'comments_per_page'
- * @param $node
- *   The comment node in question.
- */
-function _comment_get_display_setting($setting, $node) {
-  switch ($setting) {
-    case 'mode':
-      $value = variable_get('comment_default_mode_' . $node->type, COMMENT_MODE_THREADED);
-      break;
-
-    case 'comments_per_page':
-      $value = variable_get('comment_default_per_page_' . $node->type, 50);
-  }
-
-  return $value;
 }
 
 /**
