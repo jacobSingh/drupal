@@ -212,9 +212,7 @@ function update_update_form_submit($form, &$form_state) {
     case 'process_updates':
       $operations = array();
       foreach ($form_state['storage']['projects'] as $project) {
-
         // @TODO: Present some type of warning when updating multi-site used modules.
-
         // Put this in the begining (download everything first)
         $operations[] = array('update_batch_get_project', array($project));
         $latest_version = _update_get_recommended_version($project);
@@ -244,7 +242,7 @@ function update_update_form_submit($form, &$form_state) {
         // Put site in offline mode.
         variable_set('site_offline', TRUE);
       }
-      drupal_goto(url($base_url . '/plugin.php', array('absolute' => TRUE)));
+      drupal_goto($base_url . '/plugin.php');
       return;
       
       break;
@@ -359,7 +357,7 @@ function update_install_form_submit($form, &$form_state) {
   );
   
   $_SESSION['plugin_op'] = $batch;
-  drupal_goto(url($base_url . '/plugin.php', array('absolute' => TRUE)));
+  drupal_goto($base_url . '/plugin.php');
   return;
 
 }

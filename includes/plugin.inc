@@ -22,7 +22,7 @@ function plugin_filetransfer_form($form_state) {
   global $base_url;
   $form = array();
 
-  $form['#action'] = url($base_url . '/plugin.php', array('absolute' => TRUE));
+  $form['#action'] = $base_url . '/plugin.php';
   $form['#attached']['css'][] =  $base_url . '/modules/update/update.css';
   $form['#attached']['js'][]  =  $base_url . '/modules/update/update.js';
   
@@ -273,5 +273,5 @@ function plugin_manager_run_batch($filetransfer) {
   }
   
   batch_set($batch);
-  batch_process(url($base_url . '/plugin.php', array('absolute' => TRUE)), url($base_url . '/plugin.php', array('absolute' => TRUE, 'query' => array('batch' => 1))));
+  batch_process($base_url . '/plugin.php', $base_url . '/plugin.php?batch=1');
 }
