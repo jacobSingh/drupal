@@ -67,10 +67,22 @@ define('UPDATE_MAX_FETCH_ATTEMPTS', 2);
 function update_help($path, $arg) {
   switch ($path) {
     case 'admin/reports/updates':
+    case 'admin/reports/full':
       global $base_url;
       $output = '<p>' . t('Here you can find information about available updates for your installed modules and themes. Note that each module or theme is part of a "project", which may or may not have the same name, and might include multiple modules or themes within it.') . '</p>';
-      $output .= '<p>' . t('To extend the functionality or to change the look of your site, a number of contributed <a href="@modules">modules</a> and <a href="@themes">themes</a> are available.', array('@modules' => 'http://drupal.org/project/modules', '@themes' => 'http://drupal.org/project/themes')) . '</p>';
-      $output .= '<p>' . t('Each time Drupal core or a contributed module or theme is updated, it is important that <a href="@update-php">update.php</a> is run.', array('@update-php' => url($base_url . '/update.php', array('external' => TRUE)))) . '</p>';
+
+      return $output;
+
+    case 'admin/reports/updates/install':
+      global $base_url;
+      $help = <<<EOF
+      To install a new module or theme, either upload the .tar.gz file that you
+have downloaded, or paste the URL of a .tar.gz you wish to install. You can find
+ <a href="@module_url">modules</a> and <a href="@theme_url">themes</a> at
+<a href="http://drupal.org">http://drupal.org</a>.
+EOF;
+      $output = '<p>' . t($help, array('@module_url' => 'http://drupal.org/project/modules', '@theme_url' => 'http://drupal.org/project/themes')) . '</p>';
+
       return $output;
     case 'admin/appearance':
     case 'admin/config/modules':
@@ -127,18 +139,48 @@ function update_menu() {
   $items = array();
 
   $items['admin/reports/updates'] = array(
-    'title' => 'Available updates',
-    'description' => 'Get a status report about available updates for your installed modules and themes.',
-    'page callback' => 'update_status',
+    'title' => 'Updates and Add-ons',
+    'description' => 'Keep your installed modules and themes up to date and install new ones.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_update_form'),
     'access arguments' => array('administer site configuration'),
     'weight' => 10,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'update.admin.inc',
+  );
+
+  $items['admin/reports/updates/updater'] = array(
+    'title' => 'Update',
+    'description' => 'Update your installed modules and themes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_update_form'),
+    'access arguments' => array('administer site configuration'),
+    'weight' => 10,
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'file' => 'update.admin.inc',
+  );
+
+  $items['admin/reports/updates/full'] = array(
+    'title' => 'Full update report',
+    'description' => 'A comprehensive list of all modules installed on your system and their status.',
+    'page callback' => 'update_status',
+    'access arguments' => array('administer site configuration'),
+    'weight' => 30,
+    'type' => MENU_LOCAL_TASK,
     'file' => 'update.report.inc',
   );
-  $items['admin/reports/updates/list'] = array(
-    'title' => 'List',
+
+  $items['admin/update'] = array(
+    'title' => 'Updating your site',
+    'description' => 'Second step of site update / new project install',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_update_form'),
     'access arguments' => array('administer site configuration'),
-    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => 10,
+    'type' => MENU_CALLBACK,
+    'file' => 'update.admin.inc',
   );
+
   $items['admin/reports/updates/settings'] = array(
     'title' => 'Settings',
     'page callback' => 'drupal_get_form',
@@ -146,7 +188,9 @@ function update_menu() {
     'access arguments' => array('administer site configuration'),
     'file' => 'update.settings.inc',
     'type' => MENU_LOCAL_TASK,
+    'weight' => 50,
   );
+
   $items['admin/reports/updates/check'] = array(
     'title' => 'Manual update check',
     'page callback' => 'update_manual_status',
@@ -155,16 +199,42 @@ function update_menu() {
     'file' => 'update.fetch.inc',
   );
 
+  $items['admin/config/modules/install'] = array(
+    'title' => 'Install',
+    'description' => 'Install new modules and themes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_install_form'),
+    'access callback' => 'update_plugin_manager_access',
+    'access arguments' => array(),
+    'weight' => 20,
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'update.admin.inc',
+  );
+
+  $items['admin/appearance/install'] = array(
+    'title' => 'Install',
+    'description' => 'Install',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('update_install_form'),
+    'access callback' => 'update_plugin_manager_access',
+    'access arguments' => array(),
+    'weight' => 20,
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'update.admin.inc',
+  );
+
   return $items;
 }
 
+
 /**
- * Implement the hook_theme() registry.
+ * Implements hook_theme().
  */
 function update_theme() {
   return array(
-    'update_settings' => array(
+    'update_available_updates_form' => array(
       'arguments' => array('form' => NULL),
+      'file' => 'update.admin.inc',
     ),
     'update_report' => array(
       'arguments' => array('data' => NULL),
@@ -647,6 +717,12 @@ function update_flush_caches() {
   }
   return array();
 }
+
+
+function update_plugin_manager_access() {
+  return variable_get('plugin_manager_enabled', TRUE);
+}
+
 
 /**
  * @} End of "defgroup update_status_cache".

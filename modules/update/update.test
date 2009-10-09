@@ -45,7 +45,6 @@ class UpdateTestHelper extends DrupalWebTestCase {
    */
   protected function standardTests() {
     $this->assertRaw('<h3>' . t('Drupal core') . '</h3>');
-    $this->assertRaw(l(t('Check manually'), 'admin/reports/updates/check'), t('Link to check available updates manually appears.'));
     $this->assertRaw(l(t('Drupal'), 'http://example.com/project/drupal'), t('Link to the Drupal project appears.'));
     $this->assertNoText(t('No available releases found'));
   }
@@ -74,7 +73,7 @@ class UpdateCoreTestCase extends UpdateTestHelper {
   function testNoUpdatesAvailable() {
     $this->setSystemInfo7_0();
     $this->refreshUpdateStatus(array('drupal' => '0'));
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->standardTests();
     $this->assertText(t('Up to date'));
     $this->assertNoText(t('Update available'));
@@ -87,7 +86,7 @@ class UpdateCoreTestCase extends UpdateTestHelper {
   function testNormalUpdateAvailable() {
     $this->setSystemInfo7_0();
     $this->refreshUpdateStatus(array('drupal' => '1'));
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->standardTests();
     $this->assertNoText(t('Up to date'));
     $this->assertText(t('Update available'));
@@ -103,7 +102,7 @@ class UpdateCoreTestCase extends UpdateTestHelper {
   function testSecurityUpdateAvailable() {
     $this->setSystemInfo7_0();
     $this->refreshUpdateStatus(array('drupal' => '2-sec'));
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->standardTests();
     $this->assertNoText(t('Up to date'));
     $this->assertNoText(t('Update available'));
@@ -130,7 +129,7 @@ class UpdateCoreTestCase extends UpdateTestHelper {
     );
     variable_set('update_test_system_info', $system_info);
     $this->refreshUpdateStatus(array('drupal' => 'dev'));
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->assertNoText(t('2001-Sep-'));
     $this->assertText(t('Up to date'));
     $this->assertNoText(t('Update available'));
@@ -185,7 +184,7 @@ class UpdateTestContribCase extends UpdateTestHelper {
         'aaa_update_test' => '1_0',
       )
     );
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->standardTests();
     $this->assertText(t('Up to date'));
     $this->assertRaw('<h3>' . t('Modules') . '</h3>');
@@ -240,7 +239,7 @@ class UpdateTestContribCase extends UpdateTestHelper {
     );
     variable_set('update_test_system_info', $system_info);
     $this->refreshUpdateStatus(array('drupal' => '0', '#all' => '1_0'));
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->standardTests();
     // We're expecting the report to say all projects are up to date.
     $this->assertText(t('Up to date'));
@@ -303,7 +302,7 @@ class UpdateTestContribCase extends UpdateTestHelper {
       'update_test_basetheme' => '1_1-sec',
     );
     $this->refreshUpdateStatus($xml_mapping);
-    $this->drupalGet('admin/reports/updates');
+    $this->drupalGet('admin/reports/updates/full');
     $this->assertText(t('Security update required!'));
     $this->assertRaw(l(t('Update test base theme'), 'http://example.com/project/update_test_basetheme'), t('Link to the Update test base theme project appears.'));
   }
@@ -349,7 +348,7 @@ class UpdateTestContribCase extends UpdateTestHelper {
     foreach (array(TRUE, FALSE) as $check_disabled) {
       variable_set('update_check_disabled', $check_disabled);
       $this->refreshUpdateStatus($xml_mapping);
-      $this->drupalGet('admin/reports/updates');
+      $this->drupalGet('admin/reports/updates/full');
       // In neither case should we see the "Themes" heading for enabled themes.
       $this->assertNoText(t('Themes'));
       if ($check_disabled) {
