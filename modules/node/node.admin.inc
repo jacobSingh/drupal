@@ -453,6 +453,10 @@ function node_admin_nodes() {
       'status' =>  $node->status ? t('published') : t('not published'),
       'changed' => format_date($node->changed, 'short'),
     );
+    // Set a class to flag to the overlay, if present, not to open the link in
+    // the overlay.
+    $options[$node->nid]['#attributes'] = array('class' => array('overlay-escape'));
+    
     if ($multilanguage) {
       $options[$node->nid]['language'] = empty($node->language) ? t('Language neutral') : t($languages[$node->language]->name);
     }

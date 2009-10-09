@@ -36,9 +36,26 @@ function toolbar_theme($existing, $type, $theme, $path) {
  * Add admin toolbar to the page_top region automatically.
  */
 function toolbar_page_build(&$page) {
-  if (user_access('access toolbar')) {
+  if (user_access('access toolbar') && toolbar_enabled()) {
     $page['page_top']['toolbar'] = toolbar_build();
   }
+}
+
+/**
+ * Enable or disable the toolbar, or find out the current status of the toolbar.
+ *
+ * @param $enabled
+ *   If given, will change the display mode of the toolbar to the given
+ *   boolean.
+ * @return
+ *   The current status of the toolbar, TRUE for enabled, FALSE for disabled.
+ */
+function toolbar_enabled($enabled = NULL) {
+  $setting = &drupal_static(__FUNCTION__, TRUE);
+  if (isset($enabled)) {
+    $setting = $enabled;
+  }
+  return $setting;
 }
 
 /**
@@ -189,3 +206,13 @@ function toolbar_in_active_trail($path) {
   }
   return in_array($path, $active_paths);
 }
+
+/**
+ * Implement hook_overlay_child_initialize().
+ */
+function toolbar_overlay_child_initialize() {
+  // Disable admin toolbar, which is something child windows don't need and
+  // shouldn't have.
+  toolbar_enabled(FALSE);
+}
+
