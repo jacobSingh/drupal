@@ -179,7 +179,6 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
         variable_set('update_filetransfer_default', $filetransfer_backend);
         // Save the connection settings minus the password.
         variable_set("update_filetransfer_connection_settings_" . $filetransfer_backend, $connection_settings);
-
         // chmod the modules directory to 755
         $ft = update_get_filetransfer($filetransfer_backend, $form_state['values']['connection_settings'][$filetransfer_backend]);
 
@@ -187,7 +186,7 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
           // Create the modules and themes directories if needed.
           _plugin_manager_create_and_setup_directories($ft);
         } catch (Exception $e) {
-          drupal_set_message($e->getMessage());
+          drupal_set_message($e->getMessage(), 'error');
           return;
         }
         
@@ -234,10 +233,26 @@ function _plugin_manager_create_and_setup_directories($filetransfer) {
       try {
         $filetransfer->createDirectory($install_location);
         plugin_make_world_executable($filetransfer, $install_location);
-      } catch (FileTransferException $e) {
-        $message = $e->getMessage();
-        $thrown_message = t('Unable to create %directory due to the following: %reason', array('%directory' => $install_location, '%reason' => $message));
-        throw new Exception($throw_message);
+      }
+      catch (FileTransferException $e) {
+        /**
+         * Probably still not writable. Try to chmod and do it again.
+         *  @todo: Make a new exception class so we can catch it differently.
+         */
+        try {
+          $old_perms = substr(sprintf('%o', fileperms($parent_dir)), -4);
+          $filetransfer->chmod($parent_dir, 0755);
+          $filetransfer->createDirectory($install_location);
+          plugin_make_world_executable($filetransfer, $install_location);
+          
+          // Put the permissions back
+          $filetransfer->chmod($parent_dir, intval($old_perms, 8));
+        }
+        catch (FileTransferException $e) {
+          $message = t($e->getMessage(), $e->arguments);
+          $throw_message = t('Unable to create %directory due to the following: %reason', array('%directory' => $install_location, '%reason' => $message));
+          throw new Exception($throw_message);
+        }
       }
       // Put the parent directory back.
       @chmod($parent_dir, 0555);
@@ -256,16 +271,16 @@ function _plugin_manager_create_and_setup_directories($filetransfer) {
  *   If the chmod should be applied recursively.
  *
  * @throws FileTransferException
+ *   If the FileTransfer being used doesn't support chmod
+ *   or there is some other error.
  * 
  * @return void
  */
 function plugin_make_world_executable(&$filetransfer, $directory, $recursive = TRUE) {
-  if (!is_executable($directory) || 1) {
-    // Check the mode.  If it isn't world execute, try to chmod it.
-    $perms = fileperms($directory);
-    $new_perms = substr(decoct($perms), 2, -1) . "5";
-    error_log('Setting perms on ' . $directory . ' to ' . $new_perms);
-    $filetransfer->chmod($directory, $new_perms, $recursive);
+  if (!is_executable($directory)) {
+    // Set it to read + execute.
+    $new_perms = substr(sprintf('%o', fileperms($directory)), -4, -1) . "5";
+    $filetransfer->chmod($directory, intval($new_perms, 8), $recursive);
   }
 }
 
@@ -319,7 +334,7 @@ function plugin_manager_run_batch($filetransfer) {
   global $base_url;
   drupal_set_title('Installing updates');
   $batch = $_SESSION['plugin_op'];
-  unset($_SESSION['plugin_op']);
+  //unset($_SESSION['plugin_op']);
   foreach ($batch['operations'] as $key => $args) {
     // Add the filetransfer class to the existing batch which was defined elsewhere.
     // This is obviously not pretty, but don't know a better method.

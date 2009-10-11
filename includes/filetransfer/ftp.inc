@@ -79,15 +79,18 @@ class FileTransferFTPWrapper extends FileTransfer {
   }
 
   /**
-   * This is impossible with the stream wrapper,
-   * So we cheat and use the other implementation
+   * This is impossible with the stream wrapper, so an exception is thrown.
    *
-   * @staticvar FileTransferFTPExtension $ftp_ext_file_transfer
+   * If the ftp extenstion is available, we will cheat and use it.
+   *
    * @param string $path
    * @param long $mode
    * @param bool $recursive
    */
   function chmodJailed($path, $mode, $recursive) {
+    if (!function_exists('ftp_connect')) {
+      throw new FileTransferException('Unable to set permissions on @path.  Change umask settings on server to be world executable.', array('@path' => $path));
+    }
     static $ftp_ext_file_transfer;
 
     if (!$ftp_ext_file_transfer) {
