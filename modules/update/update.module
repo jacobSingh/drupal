@@ -67,11 +67,9 @@ define('UPDATE_MAX_FETCH_ATTEMPTS', 2);
 function update_help($path, $arg) {
   switch ($path) {
     case 'admin/reports/updates':
-    case 'admin/reports/full':
+    case 'admin/reports/updates/full':
       global $base_url;
-      $output = '<p>' . t('Here you can find information about available updates for your installed modules and themes. Note that each module or theme is part of a "project", which may or may not have the same name, and might include multiple modules or themes within it.') . '</p>';
-
-      return $output;
+      return '<p>' . t('Here you can find information about available updates for your installed modules and themes. Note that each module or theme is part of a "project", which may or may not have the same name, and might include multiple modules or themes within it.') . '</p>';
 
     case 'admin/reports/updates/install':
       global $base_url;
@@ -81,9 +79,8 @@ have downloaded, or paste the URL of a .tar.gz you wish to install. You can find
  <a href="@module_url">modules</a> and <a href="@theme_url">themes</a> at
 <a href="http://drupal.org">http://drupal.org</a>.
 EOF;
-      $output = '<p>' . t($help, array('@module_url' => 'http://drupal.org/project/modules', '@theme_url' => 'http://drupal.org/project/themes')) . '</p>';
+      return '<p>' . t($help, array('@module_url' => 'http://drupal.org/project/modules', '@theme_url' => 'http://drupal.org/project/themes')) . '</p>';
 
-      return $output;
     case 'admin/appearance':
     case 'admin/config/modules':
       include_once DRUPAL_ROOT . '/includes/install.inc';
@@ -718,11 +715,9 @@ function update_flush_caches() {
   return array();
 }
 
-
 function update_plugin_manager_access() {
-  return variable_get('plugin_manager_enabled', TRUE);
+  return user_access('administer site configuration') && variable_get('plugin_manager_enabled', TRUE);
 }
-
 
 /**
  * @} End of "defgroup update_status_cache".
