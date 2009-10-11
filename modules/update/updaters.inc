@@ -3,11 +3,18 @@
 
 /**
  * @file: Classes used for updating various things in Drupal via FileTransfers.
+ *
  */
  
 /**
  * Interface for a class which can update a Drupal project.
  *
+ * An Updater currently serves the following purposes:
+ *   - It can take a given directory, and determine if it can operate on it.
+ *   - It can move the contents of that directoy into the appropriate place
+ *    on the system using FileTransfer classes.
+ *   - It can return a list of "next steps" after an update or install.
+ *     - In the future, it will most likely perform some of those steps as well.
  */
 interface DrupalProjectUpdater {
 
@@ -26,12 +33,12 @@ interface DrupalProjectUpdater {
   public static function getProjectName($directory);
 
   /**
-   * @return string an absolute path to the default install location
+   * @return string an absolute path to the default install location.
    */
   public static function getInstallDirectory();
 
   /**
-   * Determines the if the Updater can handle the project provided in $directory
+   * Determines if the Updater can handle the project provided in $directory
    * @todo: Provide something more rational here, like a project spec file.
    * @param string $directory
    *
@@ -50,11 +57,13 @@ interface DrupalProjectUpdater {
   function postUpdate();
 }
 
+/**
+ * Base class for Updaters used in Drupal.
+ */
 class Updater {
 
   /**
-   *
-   * @var string Directory to install from.
+   * @var string $source Directory to install from.
    */
   public $source;
   
@@ -66,9 +75,12 @@ class Updater {
 
   /**
    * Returns an Updater of the approiate type depending on the source provided.
+   * If a directory is provided which contains a module, will return a ModuleUpdater.
    *
-   * @param string $source Directory of a Drupal project
-   * @return object Child of Updater
+   * @param string $source
+   *   Directory of a Drupal project
+   * 
+   * @return object Updater
    */
   static function factory($source) {
     if (is_dir($source)) {
@@ -81,7 +93,7 @@ class Updater {
   }
 
   /**
-   * Determines the which Updater class can operate on the given directory.
+   * Determines which Updater class can operate on the given directory.
    * 
    * @param string $directory
    *   Extracted Drupal project.
@@ -107,9 +119,9 @@ class Updater {
    * one it finds.  Not ideal, but needs a larger solution.
    *
    * @param string $directory
-   *  Directory to search in
+   *  Directory to search in.
    * @return string
-   *  Path to the info file
+   *  Path to the info file.
    */
   public static function findInfoFile($directory) {
     $info_files = file_scan_directory($directory, '/.*\.info/');
@@ -129,6 +141,9 @@ class Updater {
 
   /**
    * Gets the name of the project directory (basename).
+   *
+   * @todo: It would be nice, if projects contained an info file which could
+   *        provide their canonical name.
    * 
    * @param string $directory
    * @return string
@@ -139,10 +154,11 @@ class Updater {
 
 
   /**
-   * From the info file of a project, gets the project name
+   * Returns the project name from a Drupal info file.
    *
    * @param string $directory
-   *  Directory to search for the info file.
+   *   Directory to search for the info file.
+   * 
    * @return string
    */
   public static function getProjectTitle($directory) {
@@ -159,9 +175,10 @@ class Updater {
    * Stores default parameters for the Updater.
    *
    * @param array $overrides
-   *  An array of overrides.
+   *   An array of overrides for the default parameters.
+   *
    * @return array
-   *  An array of configuration parameters for an update or install operation
+   *   An array of configuration parameters for an update or install operation.
    */
   private function getInstallArgs($overrides = array()) {
     $args = array(
@@ -173,15 +190,17 @@ class Updater {
   }
 
   /**
-   * Updates a Drupal project, returns a list of next actions
+   * Updates a Drupal project, returns a list of next actions.
    *
    * @param FileTransfer $ft
-   *  Object which is a child of FileTransfer
+   *   Object which is a child of FileTransfer.  Used for moving files
+   *   to the server.
    * @param array $overrides
-   *  An array of settings to override defaults
-   *  @see self::getInstallArgs
+   *   An array of settings to override defaults
+   *   @see self::getInstallArgs
+   *
    * @return array
-   *  An array of links which the user may need to complete the update
+   *   An array of links which the user may need to complete the update
    */
   public function update(&$ft, $overrides = array()) {
     try {
@@ -222,15 +241,16 @@ class Updater {
   }
 
   /**
-   * Installs a Drupal project, returns a list of next actions
+   * Installs a Drupal project, returns a list of next actions.
    *
    * @param FileTransfer $ft
-   *  Object which is a child of FileTransfer
+   *   Object which is a child of FileTransfer.
    * @param array $overrides
-   *  An array of settings to override defaults
-   *  @see self::getInstallArgs
+   *   An array of settings to override defaults.
+   *   @see self::getInstallArgs
+   * 
    * @return array
-   *  An array of links which the user may need to complete the install
+   *   An array of links which the user may need to complete the install.
    */
   public function install(&$ft, $overrides = array()) {
     try {
@@ -274,6 +294,7 @@ class Updater {
   }
 
   /**
+   * Returns an array of links to pages that should be visited post operation.
    *
    * @return array Links which provide actions to take after the install is finished.
    */
@@ -282,6 +303,7 @@ class Updater {
   }
 
   /**
+   * Returns an array of links to pages that should be visited post operation.
    *
    * @return array Links which provide actions to take after the update is finished.
    */
@@ -337,9 +359,6 @@ class ModuleUpdater extends Updater implements DrupalProjectUpdater{
     return array();
   }
 
-  /**
-   * @return array Links which provide actions to take after the install is finished.
-   */
   function postInstallTasks() {
 
     return array(
@@ -348,7 +367,7 @@ class ModuleUpdater extends Updater implements DrupalProjectUpdater{
   }
 
   function postUpdateTasks() {
-    // If there are schema updates
+    // @todo: If there are schema updates.
     return array(
       l(t('Run database updates for !project', array('!project' => $this->title)), 'update.php'),
     );
@@ -368,9 +387,7 @@ class ThemeUpdater extends Updater implements DrupalProjectUpdater {
   }
 
   static function canUpdateDirectory($directory) {
-    // This is a lousy test, but don't know how else to confirm.
-    // Ask chx if you want to know how I really feel about it.
-    // @todo: remove me before committing.
+    // This is a lousy test, but don't know how else to confirm it is a theme.
     if (file_scan_directory($directory, '/.*\.module/')) {
       return FALSE;
     }

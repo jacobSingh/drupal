@@ -208,10 +208,10 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
 }
 
 /**
- * Creates the installation directories for different types of updates
+ * Creates the installation directories for all of the types of
+ * projects that can be operated on.
  *
  * @param FileTransfer $filetransfer
- *
  */
 function _plugin_manager_create_and_setup_directories($filetransfer) {
   $updater_classes = update_get_updaters();
@@ -283,6 +283,13 @@ function get_plugin_report($messages) {
   return $output;
 }
 
+
+/**
+ * Runs the batch operation specified in $_SESSION['plugin_op']
+ *
+ * @global string $base_url
+ * @param FileTransfer $filetransfer
+ */
 function plugin_manager_run_batch($filetransfer) {
   global $base_url;
   drupal_set_title('Installing updates');
