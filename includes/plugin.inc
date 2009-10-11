@@ -233,14 +233,39 @@ function _plugin_manager_create_and_setup_directories($filetransfer) {
       }
       try {
         $filetransfer->createDirectory($install_location);
+        plugin_make_world_executable($filetransfer, $install_location);
       } catch (FileTransferException $e) {
         $message = $e->getMessage();
         $thrown_message = t('Unable to create %directory due to the following: %reason', array('%directory' => $install_location, '%reason' => $message));
         throw new Exception($throw_message);
       }
-      // Put the parent directory back
+      // Put the parent directory back.
       @chmod($parent_dir, 0555);
     }
+  }
+}
+
+/**
+ * Ensures that the provided directory is executable by the server
+ *
+ * @param FileTransfer $filetransfer
+ *   A FileTransfer classes used to chmod
+ * @param string $directory
+ *   The directory to set
+ * @param bool $recursive
+ *   If the chmod should be applied recursively.
+ *
+ * @throws FileTransferException
+ * 
+ * @return void
+ */
+function plugin_make_world_executable(&$filetransfer, $directory, $recursive = TRUE) {
+  if (!is_executable($directory) || 1) {
+    // Check the mode.  If it isn't world execute, try to chmod it.
+    $perms = fileperms($directory);
+    $new_perms = substr(decoct($perms), 2, -1) . "5";
+    error_log('Setting perms on ' . $directory . ' to ' . $new_perms);
+    $filetransfer->chmod($directory, $new_perms, $recursive);
   }
 }
 

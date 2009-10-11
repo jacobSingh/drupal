@@ -229,6 +229,7 @@ class Updater {
 
       // Copy the directory in place.
       $ft->copyDirectory($this->source, $args['install_dir']);
+      plugin_make_world_executable($ft, $args['install_dir'] . '/' . $this->name);
       // Run the updates.
       // @TODO: decide if we want to implement this.
       $this->postUpdate();
@@ -258,6 +259,7 @@ class Updater {
       $args = $this->getInstallArgs($overrides);
       // Copy the directory in place.
       $ft->copyDirectory($this->source, $args['install_dir']);
+      plugin_make_world_executable($ft, $args['install_dir'] . '/' . $this->name);
       // Potentially enable something?
       // @TODO: decide if we want to implement this.
       $this->postInstall();
@@ -265,7 +267,7 @@ class Updater {
       return $this->postInstallTasks();
     }
     catch (FileTransferException $e) {
-      throw new UpdateError(t("File Transfer failed, reason: !reason", array('!reason' => t($e->getMessage(), $this->arguments))));
+      throw new UpdaterError(t("File Transfer failed, reason: !reason", array('!reason' => t($e->getMessage(), $this->arguments))));
     }
   }
 

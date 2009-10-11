@@ -278,7 +278,7 @@ function install_begin_request(&$install_state) {
     // Since we have a database connection, we use the normal cache system.
     // This is important, as the installer calls into the Drupal system for
     // the clean URL checks, so we should maintain the cache properly.
-    unset($conf['cache_default_class']);
+    #unset($conf['cache_default_class']);
 
     // Initialize the database system. Note that the connection
     // won't be initialized until it is actually requested.
