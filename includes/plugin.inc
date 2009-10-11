@@ -334,7 +334,7 @@ function plugin_manager_run_batch($filetransfer) {
   global $base_url;
   drupal_set_title('Installing updates');
   $batch = $_SESSION['plugin_op'];
-  //unset($_SESSION['plugin_op']);
+  unset($_SESSION['plugin_op']);
   foreach ($batch['operations'] as $key => $args) {
     // Add the filetransfer class to the existing batch which was defined elsewhere.
     // This is obviously not pretty, but don't know a better method.
