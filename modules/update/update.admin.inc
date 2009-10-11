@@ -311,9 +311,7 @@ function update_install_form_submit($form, &$form_state) {
     // @todo: find out if the module is already instealled, if so, throw an error.
     $local_cache = $finfo->uri;
   }
-
-  watchdog('update', 'Un-tarring ' . drupal_realpath($local_cache));
-
+  
   $archive_tar = new Archive_Tar(drupal_realpath($local_cache));
 
   $files = $archive_tar->listContent();

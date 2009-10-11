@@ -183,8 +183,13 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
         // chmod the modules directory to 755
         $ft = update_get_filetransfer($filetransfer_backend, $form_state['values']['connection_settings'][$filetransfer_backend]);
 
-        // Create the modules and themes directories if needed.
-        _plugin_manager_create_and_setup_directories($ft);
+        try {
+          // Create the modules and themes directories if needed.
+          _plugin_manager_create_and_setup_directories($ft);
+        } catch (Exception $e) {
+          drupal_set_message($e->getMessage());
+          return;
+        }
         
         // Now run the batch.
         plugin_manager_run_batch($ft);
@@ -206,15 +211,35 @@ function plugin_filetransfer_form_submit($form, &$form_state) {
  * Creates the installation directories for different types of updates
  *
  * @param FileTransfer $filetransfer
+ *
  */
 function _plugin_manager_create_and_setup_directories($filetransfer) {
   $updater_classes = update_get_updaters();
   
   foreach ($updater_classes as $class) {
+    $parent_dir = '';
+    
     $install_location = call_user_func("{$class}::getInstallDirectory");
     // Make the parent dir writable if need be and create the dir.
     if (!is_dir($install_location)) {
-      $filetransfer->createDirectory($install_location);
+      $parent_dir = dirname($install_location);
+      if (!is_writable($parent_dir)) {
+        @chmod($parent_dir, 0755);
+        /**
+         * It is expected that this will fail if the conf_dir()
+         * is owned by the FTP user. If the FTP user == web server,
+         * it will succeed.
+         */
+      }
+      try {
+        $filetransfer->createDirectory($install_location);
+      } catch (FileTransferException $e) {
+        $message = $e->getMessage();
+        $thrown_message = t('Unable to create %directory due to the following: %reason', array('%directory' => $install_location, '%reason' => $message));
+        throw new Exception($throw_message);
+      }
+      // Put the parent directory back
+      @chmod($parent_dir, 0555);
     }
   }
 }
