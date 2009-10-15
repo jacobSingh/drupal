@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.module,v 1.518 2009-10-14 20:22:04 dries Exp $
+// $Id: taxonomy.module,v 1.522 2009-10-15 14:34:07 dries Exp $
 
 /**
  * @file
@@ -10,7 +10,6 @@
  * Implement hook_permission().
  */
 function taxonomy_permission() {
-
   $permissions = array(
     'administer taxonomy' => array(
       'title' => t('Administer taxonomy'),
@@ -187,13 +186,11 @@ function taxonomy_menu() {
     'access arguments' => array('administer taxonomy'),
     'file' => 'taxonomy.admin.inc',
   );
-
   $items['admin/structure/taxonomy/list'] = array(
     'title' => 'List',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'weight' => -10,
   );
-
   $items['admin/structure/taxonomy/add'] = array(
     'title' => 'Add vocabulary',
     'page callback' => 'drupal_get_form',
@@ -213,21 +210,21 @@ function taxonomy_menu() {
     'type' => MENU_CALLBACK,
     'file' => 'taxonomy.pages.inc',
   );
-
   $items['taxonomy/term/%taxonomy_term/view'] = array(
     'title' => 'View',
     'type' => MENU_DEFAULT_LOCAL_TASK,
   );
-
   $items['taxonomy/term/%taxonomy_term/edit'] = array(
     'title' => 'Edit term',
-    'page callback' => 'taxonomy_term_edit',
-    'page arguments' => array(2),
+    'title callback' => 'taxonomy_term_title',
+    'title arguments' => array(2),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('taxonomy_form_term', 2),
     'access callback' => 'taxonomy_term_edit_access',
     'access arguments' => array(2),
     'type' => MENU_LOCAL_TASK,
     'weight' => 10,
-    'file' => 'taxonomy.pages.inc',
+    'file' => 'taxonomy.admin.inc',
   );
   $items['taxonomy/term/%taxonomy_term/feed'] = array(
     'title' => 'Taxonomy term',
@@ -257,13 +254,11 @@ function taxonomy_menu() {
     'type' => MENU_CALLBACK,
     'file' => 'taxonomy.admin.inc',
   );
-
   $items['admin/structure/taxonomy/%taxonomy_vocabulary/edit'] = array(
     'title' => 'Edit vocabulary',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'weight' => -20,
   );
-
   $items['admin/structure/taxonomy/%taxonomy_vocabulary/list'] = array(
     'title' => 'List terms',
     'page callback' => 'drupal_get_form',
@@ -273,11 +268,10 @@ function taxonomy_menu() {
     'weight' => -10,
     'file' => 'taxonomy.admin.inc',
   );
-
   $items['admin/structure/taxonomy/%taxonomy_vocabulary/list/add'] = array(
     'title' => 'Add term',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('taxonomy_form_term', 3),
+    'page arguments' => array('taxonomy_form_term', array(), 3),
     'access arguments' => array('administer taxonomy'),
     'type' => MENU_LOCAL_ACTION,
     'file' => 'taxonomy.admin.inc',
@@ -320,7 +314,7 @@ function taxonomy_vocabulary_save($vocabulary) {
   }
   elseif (empty($vocabulary->vid)) {
     $status = drupal_write_record('taxonomy_vocabulary', $vocabulary);
-    field_attach_create_bundle($vocabulary->machine_name);
+    field_attach_create_bundle('taxonomy_term', $vocabulary->machine_name);
     taxonomy_vocabulary_create_field($vocabulary);
     module_invoke_all('taxonomy_vocabulary_insert', $vocabulary);
   }
@@ -350,7 +344,7 @@ function taxonomy_vocabulary_delete($vid) {
     taxonomy_term_delete($tid);
   }
 
-  field_attach_delete_bundle($vocabulary['machine_name']);
+  field_attach_delete_bundle('taxonomy_term', $vocabulary['machine_name']);
   module_invoke_all('taxonomy', 'delete', 'vocabulary', $vocabulary);
 
   cache_clear_all();
@@ -489,23 +483,6 @@ function taxonomy_term_save($term) {
   }
   $query->execute();
 
-  db_delete('taxonomy_term_synonym')
-    ->condition('tid', $term->tid)
-    ->execute();
-  if (!empty($term->synonyms)) {
-    $query = db_insert('taxonomy_term_synonym')
-      ->fields(array('tid', 'name'));
-    foreach (explode ("\n", str_replace("\r", '', $term->synonyms)) as $synonym) {
-      if ($synonym) {
-        $query->values(array(
-          'tid' => $term->tid,
-          'name' => rtrim($synonym)
-        ));
-      }
-    }
-    $query->execute();
-  }
-
   cache_clear_all();
   taxonomy_terms_static_reset();
 
@@ -544,9 +521,6 @@ function taxonomy_term_delete($tid) {
       db_delete('taxonomy_term_hierarchy')
         ->condition('tid', $tid)
         ->execute();
-      db_delete('taxonomy_term_synonym')
-        ->condition('tid', $tid)
-        ->execute();
 
       field_attach_delete('taxonomy_term', $term);
       _taxonomy_clean_field_cache($term);
@@ -568,7 +542,6 @@ function taxonomy_term_delete($tid) {
 function taxonomy_terms_static_reset() {
   drupal_static_reset('taxonomy_term_count_nodes');
   drupal_static_reset('taxonomy_get_tree');
-  drupal_static_reset('taxonomy_get_synonym_root');
   entity_get_controller('taxonomy_term')->resetCache();
 }
 
@@ -748,36 +721,6 @@ function taxonomy_get_tree($vid, $parent = 0, $max_depth = NULL, $depth = -1) {
 }
 
 /**
- * Return an array of synonyms of the given term ID.
- */
-function taxonomy_get_synonyms($tid) {
-  if ($tid) {
-    $synonyms = array();
-    return db_query('SELECT name FROM {taxonomy_term_synonym} WHERE tid = :tid', array(':tid' => $tid))->fetchCol();
-  }
-  else {
-    return array();
-  }
-}
-
-/**
- * Return the term object that has the given string as a synonym.
- *
- * @param $synonym
- *   The string to compare against.
- * @return
- *   A term object, or FALSE if no matching term is found.
- */
-function taxonomy_get_synonym_root($synonym) {
-  $synonyms = &drupal_static(__FUNCTION__, array());
-
-  if (!isset($synonyms[$synonym])) {
-    $synonyms[$synonym] = db_query("SELECT * FROM {taxonomy_term_synonym} s, {taxonomy_term_data} t WHERE t.tid = s.tid AND s.name = :name", array(':name' => $synonym))->fetch();
-  }
-  return $synonyms[$synonym];
-}
-
-/**
  * Try to map a string to an existing term, as for glossary use.
  *
  * Provides a case-insensitive and trimmed mapping, to maximize the
@@ -948,7 +891,6 @@ function taxonomy_help($path, $arg) {
       $output .= '<p>' . t('Preparation Time: <em>0-30mins, 30-60mins, 1-2 hrs, 2hrs+</em>') . '</p>';
       $output .= '<p>' . t("Each taxonomy term (often called a 'category' or 'tag' in other systems) automatically provides lists of posts and a corresponding RSS feed. These taxonomy/term URLs can be manipulated to generate AND and OR lists of posts classified with terms. In our recipe site example, it then becomes easy to create pages displaying 'Main courses', '30 minute recipes', or '30 minute main courses and appetizers' by using terms on their own or in combination with others. There are a significant number of contributed modules which you to alter and extend the behavior of the core module for both display and organization of terms.") . '</p>';
       $output .= '<p>' . t("Terms can also be organized in parent/child relationships from the admin interface. An example would be a vocabulary grouping countries under their parent geo-political regions. The taxonomy module also enables advanced implementations of hierarchy, for example placing Turkey in both the 'Middle East' and 'Europe'.") . '</p>';
-      $output .= '<p>' . t('The taxonomy module supports the use of both synonyms and related terms, but does not directly use this functionality. However, optional contributed or custom modules may make full use of these advanced features.') . '</p>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@taxonomy">Taxonomy module</a>.', array('@taxonomy' => 'http://drupal.org/handbook/modules/taxonomy/')) . '</p>';
       return $output;
     case 'admin/structure/taxonomy':
@@ -1159,7 +1101,7 @@ function theme_field_formatter_taxonomy_term_link($variables) {
  */
 function theme_field_formatter_taxonomy_term_plain($variables) {
   $term = $variables['element']['#item']['taxonomy_term'];
-  return $term->name;
+  return check_plain($term->name);
 }
 
 /**
