@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1018 2009-10-15 14:07:25 dries Exp $
+// $Id: common.inc,v 1.1021 2009-10-15 21:19:30 webchick Exp $
 
 /**
  * @file
@@ -620,14 +620,13 @@ function drupal_encode_path($path) {
  * Drupal will ensure that messages set by drupal_set_message() and other
  * session data are written to the database before the user is redirected.
  *
- * This function ends the request; use it instead of a return in your menu callback.
+ * This function ends the request; use it instead of a return in your menu
+ * callback.
  *
  * @param $path
  *   A Drupal path or a full URL.
- * @param $query
- *   A query string component, if any.
- * @param $fragment
- *   A destination fragment identifier (named anchor).
+ * @param $options
+ *   An associative array of additional URL options to pass to url().
  * @param $http_response_code
  *   Valid values for an actual "goto" as per RFC 2616 section 10.3 are:
  *   - 301 Moved Permanently (the recommended value for most redirects)
@@ -639,22 +638,25 @@ function drupal_encode_path($path) {
  *   - 307 Temporary Redirect (alternative to "503 Site Down for Maintenance")
  *   Note: Other values are defined by RFC 2616, but are rarely used and poorly
  *   supported.
+ *
  * @see drupal_get_destination()
+ * @see url()
  */
-function drupal_goto($path = '', array $query = array(), $fragment = NULL, $http_response_code = 302) {
+function drupal_goto($path = '', array $options = array(), $http_response_code = 302) {
+  // A destination in $_GET always overrides the function arguments.
   if (isset($_GET['destination'])) {
-    extract(drupal_parse_url(urldecode($_GET['destination'])));
+    $destination = drupal_parse_url(urldecode($_GET['destination']));
+    $path = $destination['path'];
+    $options['query'] = $destination['query'];
+    $options['fragment'] = $destination['fragment'];
   }
 
-  $args = array(
-    'path' => &$path,
-    'query' => &$query,
-    'fragment' => &$fragment,
-    'http_response_code' => &$http_response_code,
-  );
-  drupal_alter('drupal_goto', $args);
+  drupal_alter('drupal_goto', $path, $options, $http_response_code);
 
-  $url = url($path, array('query' => $query, 'fragment' => $fragment, 'absolute' => TRUE));
+  // The 'Location' HTTP header must be absolute.
+  $options['absolute'] = TRUE;
+
+  $url = url($path, $options);
 
   header('Location: ' . $url, TRUE, $http_response_code);
 
@@ -4991,22 +4993,9 @@ function drupal_common_theme() {
       'arguments' => array('page' => NULL),
       'template' => 'page',
     ),
-    'maintenance_page' => array(
-      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
-      'template' => 'maintenance-page',
-    ),
-    'update_page' => array(
-      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
-    ),
-    'install_page' => array(
-      'arguments' => array('content' => NULL),
-    ),
     'region' => array(
       'arguments' => array('elements' => NULL),
       'template' => 'region',
-    ),
-    'task_list' => array(
-      'arguments' => array('items' => NULL, 'active' => NULL),
     ),
     'status_messages' => array(
       'arguments' => array('display' => NULL),
@@ -5061,6 +5050,26 @@ function drupal_common_theme() {
     ),
     'indentation' => array(
       'arguments' => array('size' => 1),
+    ),
+    // from theme.maintenance.inc
+    'maintenance_page' => array(
+      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
+      'template' => 'maintenance-page',
+    ),
+    'update_page' => array(
+      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
+    ),
+    'install_page' => array(
+      'arguments' => array('content' => NULL),
+    ),
+    'task_list' => array(
+      'arguments' => array('items' => NULL, 'active' => NULL),
+    ),
+    'authorize_message' => array(
+      'arguments' => array('message' => NULL, 'success' => TRUE),
+    ),
+    'authorize_report' => array(
+      'arguments' => array('messages' => array()),
     ),
     // from pager.inc
     'pager' => array(
@@ -5935,5 +5944,78 @@ function xmlrpc($url) {
   require_once DRUPAL_ROOT . '/includes/xmlrpc.inc';
   $args = func_get_args();
   return call_user_func_array('_xmlrpc', $args);
+}
+
+/**
+ * Retrieve a list of all available archivers.
+ */
+function archiver_get_info() {
+  $archiver_info = &drupal_static(__FUNCTION__, array());
+
+  if (empty($archiver_info)) {
+    $cache = cache_get('archiver_info');
+    if ($cache === FALSE) {
+      // Rebuild the cache and save it.
+      $archiver_info = module_invoke_all('archiver_info');
+      drupal_alter('archiver_info', $archiver_info);
+      uasort($archiver_info, 'drupal_sort_weight');
+      cache_set('archiver_info', $archiver_info);
+    }
+    else {
+      $archiver_info = $cache->data;
+    }
+  }
+
+  return $archiver_info;
+}
+
+/**
+ * Create the appropriate archiver for the specified file.
+ *
+ * @param $file
+ *   The full path of the archive file.  Note that stream wrapper
+ *   paths are supported.
+ * @return
+ *   A newly created instance of the archiver class appropriate
+ *   for the specified file, already bound to that file.
+ */
+function archiver_get_archiver($file) {
+  $archiver_info = archiver_get_info();
+
+  foreach ($archiver_info as $implementation) {
+   foreach ($implementation['extensions'] as $extension) {
+     // Because extensions may be multi-part, such as .tar.gz,
+     // we cannot use simpler approaches like substr() or pathinfo().
+     // This method isn't quite as clean but gets the job done.
+     // Also note that the file may not yet exist, so we cannot rely
+     // on fileinfo() or other disk-level utilities.
+     if (strrpos($file, '.' . $extension) === strlen($file) - strlen('.' . $extension)) {
+       return new $implementation['class']($file);
+     }
+   }
+  }
+}
+
+/**
+ * Drupal Updater registry.
+ *
+ * An Updater is a class that knows how to update various parts of the Drupal
+ * file system, for example to update modules that have newer releases, or to
+ * install a new theme.
+ *
+ * @return
+ *   Returns the Drupal Updater class registry.
+ *
+ * @see hook_updater_info()
+ * @see hook_updater_info_alter()
+ */
+function drupal_get_updaters() {
+  $updaters = &drupal_static(__FUNCTION__);
+  if (!isset($updaters)) {
+    $updaters = module_invoke_all('updater_info');
+    drupal_alter('updater_info', $updaters);
+    uasort($updaters, 'drupal_sort_weight');
+  }
+  return $updaters;
 }
 

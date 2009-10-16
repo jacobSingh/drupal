@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.160 2009-10-13 07:14:26 webchick Exp $
+// $Id: drupal_web_test_case.php,v 1.162 2009-10-16 03:01:54 dries Exp $
 
 /**
  * Base class for Drupal tests.
@@ -730,7 +730,8 @@ class DrupalWebTestCase extends DrupalTestCase {
       'value' => $this->randomName(32),
       'format' => filter_default_format(),
     );
-    $settings['body'][FIELD_LANGUAGE_NONE][0] += $body;
+    $langcode = isset($settings['language']) ? $settings['language'] : FIELD_LANGUAGE_NONE;
+    $settings['body'][$langcode][0] += $body;
 
     $node = (object) $settings;
     node_save($node);
@@ -1106,7 +1107,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     $language = language_default();
 
     // Use the test mail class instead of the default mail handler class.
-    variable_set('mail_sending_system', array('default-system' => 'TestingMailSystem'));
+    variable_set('mail_system', array('default-system' => 'TestingMailSystem'));
 
     // Use temporary files directory with the same prefix as the database.
     $public_files_directory  = $this->originalFileDirectory . '/' . $db_prefix;

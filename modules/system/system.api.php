@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.88 2009-10-15 14:07:30 dries Exp $
+// $Id: system.api.php,v 1.92 2009-10-16 03:47:14 webchick Exp $
 
 /**
  * @file
@@ -10,6 +10,38 @@
  * @addtogroup hooks
  * @{
  */
+
+/**
+ * Defines one or more hooks that are exposed by a module.
+ *
+ * Normally hooks do not need to be explicitly defined. However, by declaring a
+ * hook explicitly, a module may define a "group" for it. Modules that implement
+ * a hook may then place their implementation in either $module.module or in
+ * $module.$group.inc. If the hook is located in $module.$group.inc, then that
+ * file will be automatically loaded when needed.
+ * In general, hooks that are rarely invoked and/or are very large should be
+ * placed in a separate include file, while hooks that are very short or very
+ * frequently called should be left in the main module file so that they are
+ * always available.
+ *
+ * @return
+ *   An associative array whose keys are hook names and whose values are an
+ *   associative array containing:
+ *   - group: A string defining the group to which the hook belongs. The module
+ *     system will determine whether a file with the name $module.$group.inc
+ *     exists, and automatically load it when required.
+ *
+ * See system_hook_info() for all hook groups defined by Drupal core.
+ */
+function hook_hook_info() {
+  $hooks['token_info'] = array(
+    'group' => 'tokens',
+  );
+  $hooks['tokens'] = array(
+    'group' => 'tokens',
+  );
+  return $hooks;
+}
 
 /**
  * Inform the base system and the Field API about one or more entity types.
@@ -115,6 +147,23 @@ function hook_entity_info_alter(&$entity_info) {
   // Set the controller class for nodes to an alternate implementation of the
   // DrupalEntityController interface.
   $entity_info['node']['controller class'] = 'MyCustomNodeController';
+}
+
+/**
+ * Act on entities when loaded.
+ *
+ * This is a generic load hook called for all entity types loaded via the
+ * entity API.
+ *
+ * @param $entities
+ *   The entities keyed by entity ID.
+ * @param $type
+ *   The type of entities being loaded (i.e. node, user, comment).
+ */
+function hook_entity_load($entities, $type) {
+  foreach ($entities as $entity) {
+    $entity->foo = mymodule_add_something($entity, $entity_type);
+  }
 }
 
 /**
@@ -700,7 +749,7 @@ function hook_image_toolkits() {
  *
  * Email messages sent using functions other than drupal_mail() will not
  * invoke hook_mail_alter(). For example, a contributed module directly
- * calling the drupal_mail_sending_system()->mail() or PHP mail() function
+ * calling the drupal_mail_system()->mail() or PHP mail() function
  * will not invoke this hook. All core modules use drupal_mail() for
  * messaging, it is best practice but not manditory in contributed modules.
  *
@@ -2262,21 +2311,17 @@ function hook_install_tasks() {
 /**
  * Change the page the user is sent to by drupal_goto().
  *
- * @param $args
- *   The array keys are the same as drupal_goto() arguments and the array can
- *   be changed.
- *   <code>
- *     $args = array(
- *       'path' => &$path,
- *       'query' => &$query,
- *       'fragment' => &$fragment,
- *       'http_response_code' => &$http_response_code,
- *     );
- *   </code>
+ * @param &$path
+ *   A Drupal path or a full URL.
+ * @param &$options
+ *   An associative array of additional URL options to pass to url().
+ * @param &$http_response_code
+ *   The HTTP status code to use for the redirection. See drupal_goto() for more
+ *   information.
  */
-function hook_drupal_goto_alter(array $args) {
+function hook_drupal_goto_alter(&$path, &$options, &$http_response_code) {
   // A good addition to misery module.
-  $args['http_response_code'] = 500;
+  $http_response_code = 500;
 }
 
 /**
@@ -2401,6 +2446,34 @@ function hook_actions_delete($aid) {
 function hook_action_info_alter(&$actions) {
   $actions['node_unpublish_action']['label'] = t('Unpublish and remove from public view.');
 }
+
+/**
+ * Declare archivers to the system.
+ *
+ * An archiver is a class that is able to package and unpackage one or more files
+ * into a single possibly compressed file.  Common examples of such files are
+ * zip files and tar.gz files.  All archiver classes must implement
+ * ArchiverInterface.
+ *
+ * When mapping a
+ *
+ * Each entry should be keyed on a unique value, and specify three
+ * additional keys:
+ *   - class: The name of the PHP class for this archiver.
+ *   - extensions: An array of file extensions that this archiver supports.
+ *   - weight: This optional key specifies the weight of this archiver.
+ *     When mapping file extensions to archivers, the first archiver by
+ *     weight found that supports the requested extension will be used.
+ */
+function system_archiver_info() {
+  return array(
+    'tar' => array(
+      'class' => 'ArchiverTar',
+      'extensions' => array('tar', 'tar.gz', 'tar.bz2'),
+    ),
+  );
+}
+
 
 /**
  * Defines additional date types.

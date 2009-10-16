@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.786 2009-10-15 14:07:27 dries Exp $
+// $Id: comment.module,v 1.789 2009-10-16 03:40:40 webchick Exp $
 
 /**
  * @file
@@ -844,6 +844,7 @@ function comment_build_content($comment, $node, $build_mode = 'full') {
     '#markup' => check_markup($comment->comment, $comment->format, '', TRUE),
   );
 
+  field_attach_prepare_view('comment', array($comment->cid => $comment), $build_mode);
   $comment->content += field_attach_view('comment', $comment, $build_mode);
 
   if (empty($comment->in_preview)) {
@@ -937,6 +938,8 @@ function comment_links($comment, $node) {
  *   An array in the format expected by drupal_render().
  */
 function comment_build_multiple($comments, $node, $build_mode = 'full', $weight = 0) {
+  field_attach_prepare_view('comment', $comments, $build_mode);
+
   $build = array(
     '#sorted' => TRUE,
   );
@@ -1286,6 +1289,7 @@ function comment_save($comment) {
         'name' => $comment->name,
         'mail' => $comment->mail,
         'homepage' => $comment->homepage,
+        'language' => $comment->language,
       ))
       ->condition('cid', $comment->cid)
       ->execute();
@@ -1365,6 +1369,7 @@ function comment_save($comment) {
         'name' => $comment->name,
         'mail' => $comment->mail,
         'homepage' => $comment->homepage,
+        'language' => $comment->language,
       ))
       ->execute();
 
@@ -1638,7 +1643,7 @@ function comment_get_display_page($cid, $node_type) {
  * @see comment_form_submit()
  */
 function comment_form($form, &$form_state, $comment) {
-  global $user;
+  global $user, $language;
 
   $op = isset($_POST['op']) ? $_POST['op'] : '';
   $node = node_load($comment->nid);
@@ -1851,6 +1856,10 @@ function comment_form($form, &$form_state, $comment) {
   $form['nid'] = array(
     '#type' => 'value',
     '#value' => $comment->nid,
+  );
+  $form['language'] = array(
+    '#type' => 'value',
+    '#value' => isset($comment->language) ? $comment->language : $language->language,
   );
   $form['uid'] = array(
     '#type' => 'value',
@@ -2092,7 +2101,7 @@ function comment_form_submit($form, &$form_state) {
       $query['page'] = $page;
     }
     // Redirect to the newly posted comment.
-    $redirect = array('node/' . $node->nid, $query, 'comment-' . $comment->cid);
+    $redirect = array('node/' . $node->nid, array('query' => $query, 'fragment' => 'comment-' . $comment->cid));
   }
   else {
     watchdog('content', 'Comment: unauthorized comment submitted or comment submitted to a closed post %subject.', array('%subject' => $comment->subject), WATCHDOG_WARNING);
