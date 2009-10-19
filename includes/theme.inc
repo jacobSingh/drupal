@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.537 2009-10-16 08:27:40 webchick Exp $
+// $Id: theme.inc,v 1.540 2009-10-19 02:06:52 webchick Exp $
 
 /**
  * @file
@@ -763,6 +763,7 @@ function theme($hook, $variables = array()) {
 
   if (!isset($hooks[$hook])) {
     watchdog('theme', 'Theme key "@key" not found.', array('@key' => $hook), WATCHDOG_WARNING);
+    return '';
   }
 
   $info = $hooks[$hook];
@@ -2078,9 +2079,11 @@ function template_preprocess(&$variables, $hook) {
   // Initialize html class attribute for the current hook.
   $variables['classes_array'] = array($hook);
 
-  // Initialize attributes for the top-level template entity and its title.
+  // Initialize attributes for the top-level template entity and its title and
+  // content.
   $variables['attributes_array'] = array();
   $variables['title_attributes_array'] = array();
+  $variables['content_attributes_array'] = array();
 
   // Set default variables that depend on the database.
   $variables['is_admin']            = FALSE;
@@ -2107,9 +2110,10 @@ function template_process(&$variables, $hook) {
   // Flatten out classes.
   $variables['classes'] = implode(' ', $variables['classes_array']);
 
-  // Flatten out attributes and title_attributes.
+  // Flatten out attributes, title_attributes, and content_attributes.
   $variables['attributes'] = drupal_attributes($variables['attributes_array']);
   $variables['title_attributes'] = drupal_attributes($variables['title_attributes_array']);
+  $variables['content_attributes'] = drupal_attributes($variables['content_attributes_array']);
 }
 
 /**
@@ -2211,19 +2215,19 @@ function template_preprocess_page(&$variables) {
   // Move some variables to the top level for themer convenience and template cleanliness.
   $variables['show_messages'] = $variables['page']['#show_messages'];
 
+  foreach (system_region_list($GLOBALS['theme']) as $region_key => $region_name) {
+    if (!isset($variables['page'][$region_key])) {
+      $variables['page'][$region_key] = array();
+    }
+  }
+
   // Set up layout variable.
   $variables['layout'] = 'none';
   if (!empty($variables['page']['sidebar_first'])) {
     $variables['layout'] = 'first';
   }
-  else {
-    $variables['page']['sidebar_first'] = array();
-  }
   if (!empty($variables['page']['sidebar_second'])) {
     $variables['layout'] = ($variables['layout'] == 'first') ? 'both' : 'second';
-  }
-  else {
-    $variables['page']['sidebar_second'] = array();
   }
 
   $variables['base_path']         = base_path();

@@ -1,5 +1,5 @@
 <?php
-// $Id: node.pages.inc,v 1.90 2009-10-16 03:21:23 webchick Exp $
+// $Id: node.pages.inc,v 1.93 2009-10-19 02:00:55 dries Exp $
 
 /**
  * @file
@@ -178,6 +178,12 @@ function node_form($form, &$form_state, $node) {
       '#type' => 'checkbox',
       '#title' => t('Create new revision'),
       '#default_value' => $node->revision,
+      '#states' => array(
+        // Check the revision log checkbox when the log textarea is filled in.
+        'checked' => array(
+          'textarea[name="log"]' => array('empty' => FALSE),
+        ),
+      ),
     );
     $form['revision_information']['log'] = array(
       '#type' => 'textarea',
@@ -263,13 +269,13 @@ function node_form($form, &$form_state, $node) {
   $form['buttons']['#weight'] = 100;
   $form['buttons']['submit'] = array(
     '#type' => 'submit',
-    '#access' => variable_get('node_preview_' . $node->type, 1) != DRUPAL_REQUIRED || (!form_get_errors() && isset($form_state['node_preview'])),
+    '#access' => variable_get('node_preview_' . $node->type, DRUPAL_OPTIONAL) != DRUPAL_REQUIRED || (!form_get_errors() && isset($form_state['node_preview'])),
     '#value' => t('Save'),
     '#weight' => 5,
     '#submit' => array('node_form_submit'),
   );
   $form['buttons']['preview'] = array(
-    '#access' => variable_get('node_preview_' . $node->type, 1) != DRUPAL_DISABLED,
+    '#access' => variable_get('node_preview_' . $node->type, DRUPAL_OPTIONAL) != DRUPAL_DISABLED,
     '#type' => 'submit',
     '#value' => t('Preview'),
     '#weight' => 10,
@@ -407,8 +413,6 @@ function theme_node_preview($variables) {
 }
 
 function node_form_submit($form, &$form_state) {
-  global $user;
-
   $node = node_form_submit_build_node($form, $form_state);
   $insert = empty($node->nid);
   node_save($node);

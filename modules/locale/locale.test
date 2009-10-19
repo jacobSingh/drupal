@@ -1,5 +1,5 @@
 <?php
-// $Id: locale.test,v 1.46 2009-10-16 02:04:42 webchick Exp $
+// $Id: locale.test,v 1.48 2009-10-17 05:50:28 webchick Exp $
 
 /**
  * @file
@@ -1089,7 +1089,7 @@ class LanguageSwitchingFunctionalTest extends DrupalWebTestCase {
     $this->assertText(t('Languages'), t('Language switcher block found.'));
 
     // Assert that only the current language is marked as active.
-    list($language_switcher) = $this->xpath('//div[@id="block-locale-language"]');
+    list($language_switcher) = $this->xpath('//div[@id="block-locale-language"]/div[@class="content"]');
     $links = array(
       'active' => array(),
       'inactive' => array(),
@@ -1098,7 +1098,7 @@ class LanguageSwitchingFunctionalTest extends DrupalWebTestCase {
       'active' => array(),
       'inactive' => array(),
     );
-    foreach ($language_switcher->div->ul->li as $link) {
+    foreach ($language_switcher->ul->li as $link) {
       $classes = explode(" ", (string) $link['class']);
       list($language) = array_intersect($classes, array('en', 'fr'));
       if (in_array('active', $classes)) {
@@ -1296,6 +1296,7 @@ class LocalePathFunctionalTest extends DrupalWebTestCase {
     $this->drupalLogout();
   }
 }
+
 /**
  * Functional tests for multilingual support on nodes.
  */
@@ -1416,8 +1417,6 @@ class LocaleContentFunctionalTest extends DrupalWebTestCase {
     $this->drupalLogout();
   }
 }
-
-
 
 /**
  * Test UI language negotiation
@@ -1621,6 +1620,9 @@ class UILanguageNegotiationTest extends DrupalWebTestCase {
   }
 }
 
+/**
+ * Functional test for multilingual fields.
+ */
 class LocaleMultilingualFieldsFunctionalTest extends DrupalWebTestCase {
   public static function getInfo() {
     return array(
@@ -1634,6 +1636,9 @@ class LocaleMultilingualFieldsFunctionalTest extends DrupalWebTestCase {
     parent::setUp('locale');
   }
 
+  /**
+   * Test if field languages are correctly set through the node form.
+   */
   function testMultilingualNodeForm() {
     // Setup users.
     $admin_user = $this->drupalCreateUser(array('administer languages', 'administer content types', 'access administration pages', 'create page content', 'edit own page content'));

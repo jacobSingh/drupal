@@ -1,5 +1,5 @@
 <?php
-// $Id: node.tpl.php,v 1.24 2009-10-11 06:43:33 webchick Exp $
+// $Id: node.tpl.php,v 1.26 2009-10-19 01:30:07 dries Exp $
 
 /**
  * @file
@@ -18,6 +18,7 @@
  * - $node_url: Direct url of the current node.
  * - $terms: the themed list of taxonomy term links output from theme_links().
  * - $display_submitted: whether submission information should be displayed.
+ * - $contextual_links (array): An array of contextual links for the node.
  * - $classes: String of classes that can be used to style contextually through
  *   CSS. It can be manipulated through the variable $classes_array from
  *   preprocess functions. The default values can be one or more of the following:
@@ -74,6 +75,10 @@
 
   <?php print $user_picture; ?>
 
+  <?php if (!$page && $contextual_links): ?>
+    <?php print render($contextual_links); ?>
+  <?php endif; ?>
+
   <?php if (!$page): ?>
     <h2<?php print $title_attributes; ?>><a href="<?php print $node_url; ?>"><?php print $node_title; ?></a></h2>
   <?php endif; ?>
@@ -95,7 +100,7 @@
     </div>
   <?php endif; ?>
 
-  <div class="content">
+  <div class="content"<?php print $content_attributes; ?>>
     <?php
       // We hide the comments and links now so that we can render them later.
       hide($content['comments']);

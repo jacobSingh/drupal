@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1021 2009-10-15 21:19:30 webchick Exp $
+// $Id: common.inc,v 1.1027 2009-10-18 18:32:27 dries Exp $
 
 /**
  * @file
@@ -1563,10 +1563,15 @@ function valid_url($url, $absolute = FALSE) {
  *
  * @param $name
  *   The name of an event.
+ * @param $window
+ *   Optional number of seconds before this event expires. Defaults to 3600 (1
+ *   hour). Typically uses the same value as the flood_is_allowed() $window
+ *   parameter. Expired events are purged on cron run to prevent the flood table
+ *   from growing indefinitely.
  * @param $identifier
  *   Optional identifier (defaults to the current user's IP address).
  */
-function flood_register_event($name, $identifier = NULL) {
+function flood_register_event($name, $window = 3600, $identifier = NULL) {
   if (!isset($identifier)) {
     $identifier = ip_address();
   }
@@ -1575,6 +1580,7 @@ function flood_register_event($name, $identifier = NULL) {
       'event' => $name,
       'identifier' => $identifier,
       'timestamp' => REQUEST_TIME,
+      'expiration' => REQUEST_TIME + $window,
     ))
     ->execute();
 }
@@ -2274,6 +2280,22 @@ function format_date($timestamp, $type = 'medium', $format = '', $timezone = NUL
 }
 
 /**
+ * Returns an ISO8601 formatted date based on the given date.
+ *
+ * Can be used as a callback for RDF mappings.
+ *
+ * @param $date
+ *   A UNIX timestamp.
+ * @return string
+ *   An ISO8601 formatted date.
+ */
+function date_iso8601($date) {
+  // The DATE_ISO8601 constant cannot be used here because it does not match
+  // date('c') and produces invalid RDF markup.
+  return date('c', $date);
+}
+
+/**
  * Callback function for preg_replace_callback().
  */
 function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
@@ -2595,7 +2617,7 @@ function l($text, $path, array $options = array()) {
  *
  * In order for page callbacks to be reusable in different delivery formats,
  * they should not issue any "print" or "echo" statements, but instead just
- * return content. 
+ * return content.
  *
  * @param $page_callback_result
  *   The result of a page callback. Can be one of:
@@ -2608,7 +2630,7 @@ function l($text, $path, array $options = array()) {
  *   to be appropriate for the page request as determined by the calling
  *   function (e.g., menu_execute_active_handler()). If not given, it is
  *   determined from the menu router information of the current page. In either
- *   case, modules have a final chance to alter which function is called. 
+ *   case, modules have a final chance to alter which function is called.
  *
  * @see menu_execute_active_handler()
  * @see hook_menu()
@@ -2655,7 +2677,7 @@ function drupal_deliver_html_page($page_callback_result) {
   // Menu status constants are integers; page content is a string or array.
   if (is_int($page_callback_result)) {
     // @todo: Break these up into separate functions?
-    switch ($page_callback_result) {   
+    switch ($page_callback_result) {
       case MENU_NOT_FOUND:
         // Print a 404 page.
         drupal_add_http_header('404 Not Found');
@@ -2719,7 +2741,7 @@ function drupal_deliver_html_page($page_callback_result) {
         drupal_add_http_header('503 Service unavailable');
         drupal_set_title(t('Site under maintenance'));
         print theme('maintenance_page', array('content' => filter_xss_admin(variable_get('maintenance_mode_message',
-          t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal')))))));    
+          t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal')))))));
         break;
     }
   }
@@ -3292,7 +3314,7 @@ function drupal_clear_css_cache() {
  * @return
  *   The cleaned identifier.
  */
-function drupal_clean_css_identifier($identifier, $filter = array(' ' => '-', '_' => '-', '[' => '-', ']' => '')) {
+function drupal_clean_css_identifier($identifier, $filter = array(' ' => '-', '_' => '-', '/' => '-', '[' => '-', ']' => '')) {
   // By default, we filter using Drupal's coding standards.
   $identifier = strtr($identifier, $filter);
 
@@ -3767,6 +3789,53 @@ function drupal_process_attached($elements, $weight = JS_DEFAULT, $dependency_ch
   }
 
   return $success;
+}
+
+/**
+ * Adds JavaScript to the element to allow it to have different active states.
+ *
+ * @param $elements
+ *   The structured array that may contain an array item named states. This
+ *   array describes the different JavaScript states that can be applied to the
+ *   element when certain contitions are met. The #states array is first keyed
+ *   by one of the following states:
+ *   - enabled
+ *   - invisible
+ *   - invalid
+ *   - untouched
+ *   - optional
+ *   - filled
+ *   - unchecked
+ *   - irrelevant
+ *   - expanded
+ *   - readwrite
+ *
+ *   Each of these states is an array containing conditions that must be met in
+ *   order for this state to be active. The key to this conditioning array is
+ *   a jQuery selector for the element that is checked. The value of the
+ *   conditioning array are the states that are checked on the element (empty,
+ *   checked, value, collapsed, etc) and the expected value of that condition.
+ *
+ *   @code
+ *   $form['email_canceled']['settings'] = array(
+ *     '#type' => 'container',
+ *     '#states' => array(
+ *       // Hide the settings when the cancel notify checkbox is disabled.
+ *       'invisible' => array(
+ *         'input[name="email_canceled_toggle"]' => array('checked' => FALSE),
+ *       ),
+ *     ),
+ *   );
+ *   @endcode
+ */
+function drupal_process_states(&$elements) {
+  if (!empty($elements['#states'])) {
+    $elements['#attached']['js']['misc/states.js'] = array('weight' => JS_LIBRARY + 1);
+    $elements['#attached']['js'][] = array(
+      'type' => 'setting',
+      'data' => array('states' => array('#' . $elements['#id'] => $elements['#states'])),
+    );
+  }
 }
 
 /**
@@ -4466,10 +4535,17 @@ function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
  */
 function drupal_set_page_content($content = NULL) {
   $content_block = &drupal_static(__FUNCTION__, NULL);
+  $main_content_display = &drupal_static('system_main_content_added', FALSE);
+
   if (!empty($content)) {
     $content_block = (is_array($content) ? $content : array('main' => array('#markup' => $content)));
   }
   else {
+    // Indicate that the main content has been requested. We assume that
+    // the module requesting the content will be adding it to the page.
+    // A module can indicate that it does not handle the content by setting
+    // the static variable back to FALSE after calling this function.
+    $main_content_display = TRUE;
     return $content_block;
   }
 }
@@ -4487,6 +4563,8 @@ function drupal_set_page_content($content = NULL) {
  * @see element_info('page')
  */
 function drupal_render_page($page) {
+  $main_content_display = &drupal_static('system_main_content_added', FALSE);
+
   // Allow menu callbacks to return strings or arbitrary arrays to render.
   // If the array returned is not of #type page directly, we need to fill
   // in the page with defaults.
@@ -4503,6 +4581,13 @@ function drupal_render_page($page) {
   // Modules alter the $page as needed. Blocks are populated into regions like
   // 'sidebar_first', 'footer', etc.
   drupal_alter('page', $page);
+
+  // If no module has taken care of the main content, add it to the page now.
+  // This allows the site to still be usable even if no modules that
+  // control page regions (for example, the Block module) are enabled.
+  if (!$main_content_display) {
+    $page['content']['system_main'] = drupal_set_page_content();
+  }
 
   return drupal_render($page);
 }
@@ -4645,6 +4730,9 @@ function drupal_render(&$elements) {
       }
     }
   }
+
+  // Add any JavaScript state information associated with the element.
+  drupal_process_states($elements);
 
   // Add additional libraries, CSS, JavaScript an other custom
   // attached data associated with this element.
@@ -5169,6 +5257,9 @@ function drupal_common_theme() {
       'arguments' => array('element' => NULL),
     ),
     'vertical_tabs' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'container' => array(
       'arguments' => array('element' => NULL),
     ),
   );
@@ -5983,16 +6074,16 @@ function archiver_get_archiver($file) {
   $archiver_info = archiver_get_info();
 
   foreach ($archiver_info as $implementation) {
-   foreach ($implementation['extensions'] as $extension) {
-     // Because extensions may be multi-part, such as .tar.gz,
-     // we cannot use simpler approaches like substr() or pathinfo().
-     // This method isn't quite as clean but gets the job done.
-     // Also note that the file may not yet exist, so we cannot rely
-     // on fileinfo() or other disk-level utilities.
-     if (strrpos($file, '.' . $extension) === strlen($file) - strlen('.' . $extension)) {
-       return new $implementation['class']($file);
-     }
-   }
+    foreach ($implementation['extensions'] as $extension) {
+      // Because extensions may be multi-part, such as .tar.gz,
+      // we cannot use simpler approaches like substr() or pathinfo().
+      // This method isn't quite as clean but gets the job done.
+      // Also note that the file may not yet exist, so we cannot rely
+      // on fileinfo() or other disk-level utilities.
+      if (strrpos($file, '.' . $extension) === strlen($file) - strlen('.' . $extension)) {
+        return new $implementation['class']($file);
+      }
+    }
   }
 }
 
