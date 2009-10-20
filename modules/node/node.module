@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1150 2009-10-17 05:50:29 webchick Exp $
+// $Id: node.module,v 1.1152 2009-10-20 01:24:34 dries Exp $
 
 /**
  * @file
@@ -754,6 +754,47 @@ function node_type_set_defaults($info = array()) {
 }
 
 /**
+ * Define the default RDF mapping for the node entity type.
+ *
+ * These default mapping properties are used by rdf_save_mapping() to populate
+ * non-existing properties before they are saved to the database.
+ *
+ * @return
+ *   A list of default mapping properties for the node entity type.
+ */
+function node_rdf_mapping() {
+  return array(
+    array(
+      'type' => 'node',
+      'bundle' => RDF_DEFAULT_BUNDLE,
+      'mapping' => array(
+        'rdftype' => array('sioc:Item', 'foaf:Document'),
+        'title'   => array(
+          'predicates' => array('dc:title'),
+        ),
+        'created' => array(
+          'predicates' => array('dc:date', 'dc:created'),
+          'datatype' => 'xsd:dateTime',
+          'callback' => 'date_iso8601',
+        ),
+        'changed' => array(
+          'predicates' => array('dc:modified'),
+        ),
+        'body'    => array(
+          'predicates' => array('content:encoded'),
+        ),
+        'uid'     => array(
+          'predicates' => array('sioc:has_creator'),
+        ),
+        'name'    => array(
+          'predicates' => array('foaf:name'),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
  * Determine whether a node hook exists.
  *
  * @param $node
@@ -1217,7 +1258,7 @@ function node_language_provider($languages) {
   // We cannot use args now.
   $path = explode('/', $path);
   // Act only if we are in a node page.
-  if ($path[0] == 'node' && $nid = intval($path[1])) {
+  if (isset($path[0]) && isset($path[1]) && $path[0] == 'node' && $nid = intval($path[1])) {
     // We cannot perform a node load here.
     $result = db_query('SELECT n.language FROM {node} n WHERE n.nid = :nid', array(':nid' => $nid))->fetchAssoc();
     return $result['language'];
