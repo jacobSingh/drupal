@@ -7,6 +7,18 @@
  */
 
 /**
+ * Implements hook_permission().
+ */
+function overlay_permission() {
+  return array(
+    'access overlay' => array(
+      'title' => t('Access the administrative overlay'),
+      'description' => t('View administrative pages in the overlay.'),
+    ),
+  );
+}
+
+/**
  * Implement hook_init().
  *
  * Determine whether the current page request is destined to appear in the
@@ -19,7 +31,7 @@ function overlay_init() {
   global $custom_theme;
   // Only act if the user has access to administration pages. Other modules can
   // also enable the overlay directly for other uses of the JavaScript.
-  if (user_access('access administration pages')) {
+  if (user_access('access overlay')) {
     // Initialize JavaScript settings to specify admin and non-admin links.
     drupal_add_js(array('overlay' => array('links' => array('admin' => NULL, 'nonAdmin' => NULL))), 'setting');
     if (isset($_GET['render']) && $_GET['render'] == 'overlay') {
