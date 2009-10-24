@@ -201,3 +201,13 @@ function toolbar_in_active_trail($path) {
   }
   return in_array($path, $active_paths);
 }
+
+/**
+ * Implement hook_overlay_child_initialize().
+ */
+function toolbar_overlay_child_initialize() {
+  // Disable admin toolbar, which is something child windows don't need and
+  // shouldn't have.
+  toolbar_enabled(FALSE);
+}
+

@@ -1,0 +1,12 @@
+<?php
+// $Id$
+
+/**
+ * Implement hook_enable().
+ *
+ * After enabling, remember that Overlay was just enabled in a session variable.
+ * Now we can react to the enabling of the module at the next page load in overlay_init().
+ */
+function overlay_enable() {
+  $_SESSION['overlay_just_enabled'] = 'step1';
+}
