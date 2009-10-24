@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.410 2009-10-20 19:06:09 webchick Exp $
+// $Id: system.install,v 1.413 2009-10-24 02:22:53 webchick Exp $
 
 /**
  * @file
@@ -1992,28 +1992,6 @@ function system_update_7006() {
  * all modules can use the updated permission scheme during their updates.
  */
 function system_update_7007() {
-  $schema['role_permission'] = array(
-    'fields' => array(
-      'rid' => array(
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'permission' => array(
-        'type' => 'varchar',
-        'length' => 64,
-        'not null' => TRUE,
-        'default' => '',
-      ),
-    ),
-    'primary key' => array('rid', 'permission'),
-    'indexes' => array(
-      'permission' => array('permission'),
-    ),
-  );
-
-  db_create_table('role_permission', $schema['role_permission']);
-
   // Copy the permissions from the old {permission} table to the new {role_permission} table.
   $messages = array();
   $result = db_query("SELECT rid, perm FROM {permission} ORDER BY rid ASC");
@@ -2825,13 +2803,23 @@ function system_update_7040() {
  * function to be used for final page rendering and sending to browser.
  */
 function system_update_7041() {
-  db_add_field('menu_router', 'delivery_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  // Moved to update_fix_d7_requirements().
 }
 
 /**
  * Rename dst and src to source and alias.
  */
 function system_update_7042() {
+  // update_fix_d7_requirements() adds 'fake' source and alias columns to
+  // allow bootstrap to run without fatal errors. Remove those columns now
+  // so that we can rename properly.
+  db_drop_field('url_alias', 'source');
+  db_drop_field('url_alias', 'alias');
+
+  // Add the cache_path table.
+  $schema['cache_path'] = drupal_get_schema_unprocessed('system', 'cache');
+  $schema['cache_path']['description'] = 'Cache table used for path alias lookups.';
+  db_create_table('cache_path', $schema['cache_path']);
   // Drop indexes.
   db_drop_index('url_alias', 'src_language_pid');
   db_drop_unique_key('url_alias', 'dst_language_pid');
@@ -2841,6 +2829,7 @@ function system_update_7042() {
   // Add indexes back.
   db_add_index('url_alias', 'source_language_pid', array('source', 'language', 'pid'));
   db_add_unique_key('url_alias', 'alias_language_pid', array('alias', 'language', 'pid'));
+
 }
 
 /**

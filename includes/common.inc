@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1027 2009-10-18 18:32:27 dries Exp $
+// $Id: common.inc,v 1.1029 2009-10-23 22:24:10 webchick Exp $
 
 /**
  * @file
@@ -5071,196 +5071,196 @@ function drupal_common_theme() {
   return array(
     // theme.inc
     'placeholder' => array(
-      'arguments' => array('text' => NULL)
+      'variables' => array('text' => NULL)
     ),
     'html' => array(
-      'arguments' => array('page' => NULL),
+      'render element' => 'page',
       'template' => 'html',
     ),
     'page' => array(
-      'arguments' => array('page' => NULL),
+      'render element' => 'page',
       'template' => 'page',
     ),
     'region' => array(
-      'arguments' => array('elements' => NULL),
+      'render element' => 'elements',
       'template' => 'region',
     ),
     'status_messages' => array(
-      'arguments' => array('display' => NULL),
+      'variables' => array('display' => NULL),
     ),
     'links' => array(
-      'arguments' => array('links' => NULL, 'attributes' => array('class' => array('links')), 'heading' => array()),
+      'variables' => array('links' => NULL, 'attributes' => array('class' => array('links')), 'heading' => array()),
     ),
     'image' => array(
-      'arguments' => array('path' => NULL, 'alt' => '', 'title' => '', 'attributes' => array(), 'getsize' => TRUE),
+      'variables' => array('path' => NULL, 'alt' => '', 'title' => '', 'attributes' => array(), 'getsize' => TRUE),
     ),
     'breadcrumb' => array(
-      'arguments' => array('breadcrumb' => NULL),
+      'variables' => array('breadcrumb' => NULL),
     ),
     'help' => array(
-      'arguments' => array(),
+      'variables' => array(),
     ),
     'submenu' => array(
-      'arguments' => array('links' => NULL),
+      'variables' => array('links' => NULL),
     ),
     'table' => array(
-      'arguments' => array('header' => NULL, 'rows' => NULL, 'attributes' => array(), 'caption' => NULL, 'colgroups' => array(), 'sticky' => TRUE),
+      'variables' => array('header' => NULL, 'rows' => NULL, 'attributes' => array(), 'caption' => NULL, 'colgroups' => array(), 'sticky' => TRUE),
     ),
     'table_select_header_cell' => array(
-      'arguments' => array(),
+      'variables' => array(),
     ),
     'tablesort_indicator' => array(
-      'arguments' => array('style' => NULL),
+      'variables' => array('style' => NULL),
     ),
     'mark' => array(
-      'arguments' => array('type' => MARK_NEW),
+      'variables' => array('type' => MARK_NEW),
     ),
     'item_list' => array(
-      'arguments' => array('items' => array(), 'title' => NULL, 'type' => 'ul', 'attributes' => array()),
+      'variables' => array('items' => array(), 'title' => NULL, 'type' => 'ul', 'attributes' => array()),
     ),
     'more_help_link' => array(
-      'arguments' => array('url' => NULL),
+      'variables' => array('url' => NULL),
     ),
     'feed_icon' => array(
-      'arguments' => array('url' => NULL, 'title' => NULL),
+      'variables' => array('url' => NULL, 'title' => NULL),
     ),
     'more_link' => array(
-      'arguments' => array('url' => NULL, 'title' => NULL)
+      'variables' => array('url' => NULL, 'title' => NULL)
     ),
     'blocks' => array(
-      'arguments' => array('region' => NULL),
+      'variables' => array('region' => NULL),
     ),
     'username' => array(
-      'arguments' => array('account' => NULL),
+      'variables' => array('account' => NULL),
     ),
     'progress_bar' => array(
-      'arguments' => array('percent' => NULL, 'message' => NULL),
+      'variables' => array('percent' => NULL, 'message' => NULL),
     ),
     'indentation' => array(
-      'arguments' => array('size' => 1),
+      'variables' => array('size' => 1),
     ),
     // from theme.maintenance.inc
     'maintenance_page' => array(
-      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
+      'variables' => array('content' => NULL, 'show_messages' => TRUE),
       'template' => 'maintenance-page',
     ),
     'update_page' => array(
-      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
+      'variables' => array('content' => NULL, 'show_messages' => TRUE),
     ),
     'install_page' => array(
-      'arguments' => array('content' => NULL),
+      'variables' => array('content' => NULL),
     ),
     'task_list' => array(
-      'arguments' => array('items' => NULL, 'active' => NULL),
+      'variables' => array('items' => NULL, 'active' => NULL),
     ),
     'authorize_message' => array(
-      'arguments' => array('message' => NULL, 'success' => TRUE),
+      'variables' => array('message' => NULL, 'success' => TRUE),
     ),
     'authorize_report' => array(
-      'arguments' => array('messages' => array()),
+      'variables' => array('messages' => array()),
     ),
     // from pager.inc
     'pager' => array(
-      'arguments' => array('tags' => array(), 'element' => 0, 'parameters' => array(), 'quantity' => 9),
+      'variables' => array('tags' => array(), 'element' => 0, 'parameters' => array(), 'quantity' => 9),
     ),
     'pager_first' => array(
-      'arguments' => array('text' => NULL, 'element' => 0, 'parameters' => array()),
+      'variables' => array('text' => NULL, 'element' => 0, 'parameters' => array()),
     ),
     'pager_previous' => array(
-      'arguments' => array('text' => NULL, 'element' => 0, 'interval' => 1, 'parameters' => array()),
+      'variables' => array('text' => NULL, 'element' => 0, 'interval' => 1, 'parameters' => array()),
     ),
     'pager_next' => array(
-      'arguments' => array('text' => NULL, 'element' => 0, 'interval' => 1, 'parameters' => array()),
+      'variables' => array('text' => NULL, 'element' => 0, 'interval' => 1, 'parameters' => array()),
     ),
     'pager_last' => array(
-      'arguments' => array('text' => NULL, 'element' => 0, 'parameters' => array()),
+      'variables' => array('text' => NULL, 'element' => 0, 'parameters' => array()),
     ),
     'pager_link' => array(
-      'arguments' => array('text' => NULL, 'page_new' => NULL, 'element' => NULL, 'parameters' => array(), 'attributes' => array()),
+      'variables' => array('text' => NULL, 'page_new' => NULL, 'element' => NULL, 'parameters' => array(), 'attributes' => array()),
     ),
     // from locale.inc
     'locale_admin_manage_screen' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
     ),
     // from menu.inc
     'menu_link' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'menu_tree' => array(
-      'arguments' => array('tree' => NULL),
+      'render element' => 'tree',
     ),
     'menu_local_task' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'menu_local_action' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'menu_local_tasks' => array(
-      'arguments' => array(),
+      'variables' => array(),
     ),
     // from form.inc
     'select' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'fieldset' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'radio' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'radios' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'date' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'checkbox' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'checkboxes' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'button' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'image_button' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'hidden' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'textfield' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'form' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'textarea' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'markup' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'password' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'file' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'tableselect' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'form_element' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'text_format_wrapper' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'vertical_tabs' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
     'container' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
   );
 }
@@ -6065,12 +6065,18 @@ function archiver_get_info() {
  *
  * @param $file
  *   The full path of the archive file.  Note that stream wrapper
- *   paths are supported.
+ *   paths are supported, but not remote ones.
  * @return
  *   A newly created instance of the archiver class appropriate
  *   for the specified file, already bound to that file.
+ *   If no appropriate archiver class was found, will return FALSE.
  */
 function archiver_get_archiver($file) {
+  // Archivers can only work on local paths
+  $filepath = drupal_realpath($file);
+  if (!is_file($filepath)) {
+    throw new Exception(t('Archivers can only operate on local files: %file not supported', array('%file' => $file)));
+  }
   $archiver_info = archiver_get_info();
 
   foreach ($archiver_info as $implementation) {
@@ -6080,8 +6086,8 @@ function archiver_get_archiver($file) {
       // This method isn't quite as clean but gets the job done.
       // Also note that the file may not yet exist, so we cannot rely
       // on fileinfo() or other disk-level utilities.
-      if (strrpos($file, '.' . $extension) === strlen($file) - strlen('.' . $extension)) {
-        return new $implementation['class']($file);
+      if (strrpos($filepath, '.' . $extension) === strlen($filepath) - strlen('.' . $extension)) {
+        return new $implementation['class']($filepath);
       }
     }
   }
