@@ -24,7 +24,9 @@ function overlay_permission() {
  * Remove the toolbar when displaying a page within the overlay.
  */
 function overlay_page_alter(&$page) {
-  $page['page_top']['toolbar']['#access'] = FALSE;
+  if (overlay_get_mode() == 'child') {
+    $page['page_top']['toolbar']['#access'] = FALSE;
+  }
 }
 
 /**
