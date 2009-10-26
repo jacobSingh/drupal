@@ -1,0 +1,20 @@
+  _________                      __       .___
+ /   _____/ _____ _____    ____ |  | __ __| _/______  _  ______
+ \_____  \ /     \\__  \ _/ ___\|  |/ // __ |/  _ \ \/ \/ /    \
+ /        \  Y Y  \/ __ \\  \___|    </ /_/ (  <_> )     /   |  \
+/_______  /__|_|  (____  /\___  >__|_ \____ |\____/ \/\_/|___|  /
+        \/      \/     \/     \/     \/    \/                 \/
+
+Installation Instructions
+
+* Files belong in {drupal-root}/sites/all/modules/contrib/smackdown
+* Once files are in place, go to http://{web-root}/admin/build/modules and
+  enable the module.
+* This module can work with any content type as long as that content type meets
+  the following required structure:
+  - A title field.
+  - Two node reference fields. (@see nodereference documentation for
+    instructions on how to use it)
+* After creating a content type with these requirements, check the box on
+  http://{web-root}/admin/content/node-types/{your-node-type-name} entitled
+  'Smackdown node'.
