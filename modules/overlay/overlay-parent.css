@@ -121,3 +121,10 @@
 .overlay .ui-dialog-titlebar ul li.active a:hover {
   color: #000;
 }
+
+/**
+ * Add to shortcuts link
+ */
+.overlay div.add-to-shortcuts {
+  padding-top: 0.9em;
+}
