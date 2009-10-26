@@ -23,7 +23,7 @@ Drupal.behaviors.overlayChild = {
 
     // If we cannot reach the parent window, then we have nothing else to do
     // here.
-    if (!Drupal.isObject(parent.Drupal) || !Drupal.isObject(parent.Drupal.overlay)) {
+    if (!$.isObject(parent.Drupal) || !$.isObject(parent.Drupal.overlay)) {
       return;
     }
 
@@ -49,7 +49,7 @@ Drupal.behaviors.overlayChild = {
     parent.Drupal.overlay.bindChild(window);
 
     // Install onBeforeUnload callback, if module is present.
-    if (Drupal.isObject(Drupal.onBeforeUnload) && !Drupal.onBeforeUnload.callbackExists('overlayChild')) {
+    if ($.isObject(Drupal.onBeforeUnload) && !Drupal.onBeforeUnload.callbackExists('overlayChild')) {
       Drupal.onBeforeUnload.addCallback('overlayChild', function () {
         // Tell the parent window we're unloading.
         parent.Drupal.overlay.unbindChild(window);

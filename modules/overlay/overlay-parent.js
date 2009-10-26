@@ -316,7 +316,7 @@ Drupal.overlay.close = function (args, statusMessages) {
   // Hide and destroy the dialog.
   function closeDialog() {
     // Prevent double execution when close is requested more than once.
-    if (!Drupal.isObject(self.iframe.$container)) {
+    if (!$.isObject(self.iframe.$container)) {
       return;
     }
     self.beforeCloseEnabled = true;
@@ -325,7 +325,7 @@ Drupal.overlay.close = function (args, statusMessages) {
       self.options.onOverlayClose(args, statusMessages);
     }
   }
-  if (!Drupal.isObject(self.iframe.$element) || !self.iframe.$element.size() || !self.iframe.$element.is(':visible')) {
+  if (!$.isObject(self.iframe.$element) || !self.iframe.$element.size() || !self.iframe.$element.is(':visible')) {
     closeDialog();
   }
   else {
@@ -725,7 +725,7 @@ Drupal.overlay.resize = function (size) {
   // Perform the resize animation.
   $('.overlay').animate(animationOptions, 'fast', function () {
     // Proceed only if the dialog still exists.
-    if (Drupal.isObject(self.iframe.$element) && Drupal.isObject(self.iframe.$container)) {
+    if ($.isObject(self.iframe.$element) && $.isObject(self.iframe.$container)) {
       // Resize the iframe element and container.
       $('.overlay').width(dialogSize.width).height(dialogSize.height);
       self.iframe.$container.width(frameSize.width).height(frameSize.height);
