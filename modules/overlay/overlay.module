@@ -19,6 +19,15 @@ function overlay_permission() {
 }
 
 /**
+ * Implements hook_page_alter().
+ *
+ * Remove the toolbar when displaying a page within the overlay.
+ */
+function overlay_page_alter(&$page) {
+  $page['page_top']['toolbar']['#access'] = FALSE;
+}
+
+/**
  * Implement hook_init().
  *
  * Determine whether the current page request is destined to appear in the
