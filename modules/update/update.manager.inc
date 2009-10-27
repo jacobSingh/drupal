@@ -1,5 +1,5 @@
 <?php
-// $Id: update.manager.inc,v 1.2 2009-10-22 00:52:03 dries Exp $
+// $Id: update.manager.inc,v 1.8 2009-10-27 03:34:01 webchick Exp $
 
 /**
  * @file
@@ -74,12 +74,10 @@ function update_manager_update_form($form, $form_state = array(), $context) {
   $form['#attached']['css'][] = drupal_get_path('module', 'update') . '/update.css';
 
   // This will be a nested array. The first key is the kind of project, which
-  // can be either 'enabled', 'disabled', 'manual-enabled' (enabled add-ons
-  // which require manual updates, such as core or -dev projects) or
-  // 'manual-disabled' (disabled add-ons that need a manual update). Then,
-  // each subarray is an array of projects of that type, indexed by project
-  // short name, and containing an array of data for cells in that project's
-  // row in the appropriate table.
+  // can be either 'enabled', 'disabled', 'manual' (projects which require
+  // manual updates, such as core). Then, each subarray is an array of
+  // projects of that type, indexed by project short name, and containing an
+  // array of data for cells in that project's row in the appropriate table.
   $projects = array();
 
   // This stores the actual download link we're going to update from for each
@@ -134,7 +132,7 @@ function update_manager_update_form($form, $form_state = array(), $context) {
     switch ($project['status']) {
       case UPDATE_NOT_SECURE:
       case UPDATE_REVOKED:
-        $entry['title'] .= ' ' . t('(Security Update)');
+        $entry['title'] .= ' ' . t('(Security update)');
         $entry['#weight'] = -2;
         $type = 'security';
         break;
@@ -159,9 +157,8 @@ function update_manager_update_form($form, $form_state = array(), $context) {
 
     $entry['#attributes'] = array('class' => array('update-' . $type));
 
-    // Drupal core and projects which are dev versions with no stable release
-    // need to be upgraded manually.
-    $needs_manual = $project['project_type'] == 'core' || ($project['install_type'] == 'dev' && $recommended_release['version_extra'] == 'dev');
+    // Drupal core needs to be upgraded manually.
+    $needs_manual = $project['project_type'] == 'core';
 
     if ($needs_manual) {
       // Since it won't be tableselect, #weight will add an extra column to the
@@ -180,28 +177,18 @@ function update_manager_update_form($form, $form_state = array(), $context) {
     // appropriate subarray.
     switch ($project['project_type']) {
       case 'core':
-        // Core is always enabled, but need manual updates at this time.
-        $projects['manual-enabled'][$name] = $entry;
+        // Core needs manual updates at this time.
+        $projects['manual'][$name] = $entry;
         break;
         
       case 'module':
       case 'theme':
-        if ($needs_manual) {
-          $projects['manual-enabled'][$name] = $entry;
-        }
-        else {
-          $projects['enabled'][$name] = $entry;
-        }
+        $projects['enabled'][$name] = $entry;
         break;
 
       case 'module-disabled':
       case 'theme-disabled':
-        if ($needs_manual) {
-          $projects['manual-disabled'][$name] = $entry;
-        }
-        else {
-          $projects['disabled'][$name] = $entry;
-        }
+        $projects['disabled'][$name] = $entry;
         break;
     }
   }
@@ -256,25 +243,14 @@ function update_manager_update_form($form, $form_state = array(), $context) {
     $form['#validate'][] = 'update_manager_update_form_validate';
   }
 
-  if (!empty($projects['manual-enabled'])) {
-    $prefix = '<h2>' . t('Add-ons requiring manual updates') . '</h2>';
-    $prefix .= '<p>' . t('Updates of Drupal core or development releases are not supported at this time.') . '</p>';
+  if (!empty($projects['manual'])) {
+    $prefix = '<h2>' . t('Manual updates required') . '</h2>';
+    $prefix .= '<p>' . t('Updates of Drupal core are not supported at this time.') . '</p>';
     $form['manual_updates'] = array(
       '#type' => 'markup',
-      '#markup' => theme('table', array('header' => $headers, 'rows' => $projects['manual-enabled'])),
+      '#markup' => theme('table', array('header' => $headers, 'rows' => $projects['manual'])),
       '#prefix' => $prefix,
       '#weight' => 20,
-    );
-  }
-
-  if (!empty($projects['manual-disabled'])) {
-    $prefix = '<h2>' . t('Disabled add-ons requiring manual updates') . '</h2>';
-    $prefix .= '<p>' . t('Updates of Drupal core or development releases are not supported at this time.') . '</p>';
-    $form['manual_disabled'] = array(
-      '#type' => 'markup',
-      '#markup' => theme('table', array('header' => $headers, 'rows' => $projects['manual-disabled'])),
-      '#prefix' => $prefix,
-      '#weight' => 25,
     );
   }
 
@@ -442,14 +418,30 @@ function update_manager_confirm_update_form_submit($form, &$form_state) {
     foreach ($projects as $project => $url) {
       $project_location = $directory . '/' . $project;
       $updater = Updater::factory($project_location);
+      $project_real_location = drupal_realpath($project_location);
       $updates[] = array(
         'project' => $project,
         'updater_name' => get_class($updater),
-        'local_url' => drupal_realpath($project_location),
+        'local_url' => $project_real_location,
       );
     }
 
-    system_run_authorized('update_authorize_run_update', drupal_get_path('module', 'update') . '/update.authorize.inc', array($updates));
+    // If the owner of the last directory we extracted is the same as the
+    // owner of our configuration directory (e.g. sites/default) where we're
+    // trying to install the code, there's no need to prompt for FTP/SSH
+    // credentials. Instead, we instantiate a FileTransferLocal and invoke
+    // update_authorize_run_update() directly.
+    if (fileowner($project_real_location) == fileowner(conf_path())) {
+      module_load_include('inc', 'update', 'update.authorize');
+      $filetransfer = new FileTransferLocal(DRUPAL_ROOT);
+      update_authorize_run_update($filetransfer, $updates);
+    }
+    // Otherwise, go through the regular workflow to prompt for FTP/SSH
+    // credentials and invoke update_authorize_run_update() indirectly with
+    // whatever FileTransfer object authorize.php creates for us.
+    else {
+      system_run_authorized('update_authorize_run_update', drupal_get_path('module', 'update') . '/update.authorize.inc', array($updates));
+    }
   }
 }
 
@@ -462,13 +454,41 @@ function update_manager_confirm_update_form_submit($form, &$form_state) {
  * @{
  */
 
-function update_manager_install_form(&$form_state) {
+/**
+ * Build the form for the update manager page to install new projects.
+ *
+ * This presents a place to enter a URL or upload an archive file to use to
+ * install a new module or theme.
+ *
+ * @param $form
+ * @param $form_state
+ * @param $context
+ *   String representing the context from which we're trying to install, can
+ *   be: 'module', 'theme' or 'report'.
+ * @return
+ *   The form array for selecting which project to install.
+ */
+function update_manager_install_form($form, &$form_state, $context) {
   $form = array();
+
+  // Collect all the supported archive file extensions for the UI text.
+  $extensions = array();
+  $archiver_info = archiver_get_info();
+  foreach ($archiver_info as $info) {
+    if (!empty($info['extensions'])) {
+      $extensions += $info['extensions'];
+    }
+  }
+  $form['help_text'] = array(
+    '#prefix' => '<p>',
+    '#markup' => t('To install a new module or theme, either paste the URL of an archive file you wish to install, or upload the archive file that you have downloaded. You can find <a href="@module_url">modules</a> and <a href="@theme_url">themes</a> at <a href="@drupal_org_url">http://drupal.org</a>. The following archive extensions are supported: %extensions', array('@module_url' => 'http://drupal.org/project/modules', '@theme_url' => 'http://drupal.org/project/themes', '@drupal_org_url' => 'http://drupal.org', '%extensions' => implode(', ', $extensions))),
+    '#suffix' => '</p>',
+  );
 
   $form['project_url'] = array(
     '#type' => 'textfield',
     '#title' => t('URL'),
-    '#description' => t('Paste the URL to a Drupal module or theme archive (.tar.gz) to install it. (e.g http://ftp.drupal.org/files/projects/projectname.tar.gz)'),
+    '#description' => t('Paste the URL to a Drupal module or theme archive to install it (e.g http://ftp.drupal.org/files/projects/projectname.tar.gz).'),
   );
 
   $form['information'] = array(
@@ -480,7 +500,7 @@ function update_manager_install_form(&$form_state) {
   $form['project_upload'] = array(
     '#type' => 'file',
     '#title' => t('Upload a module or theme'),
-    '#description' => t('Upload a Drupal module or theme (in .tar.gz format) to install it.'),
+    '#description' => t('Upload a Drupal module or theme archive to install it.'),
   );
 
   $form['submit'] = array(
@@ -497,6 +517,12 @@ function update_manager_install_form(&$form_state) {
 function update_manager_install_form_validate($form, &$form_state) {
   if (!($form_state['values']['project_url'] XOR !empty($_FILES['files']['name']['project_upload']))) {
     form_set_error('project_url', t('You must either provide a URL or upload an archive file to install.'));
+  }
+
+  if ($form_state['values']['project_url']) {
+    if (!valid_url($form_state['values']['project_url'], TRUE)) {
+      form_set_error('project_url', t('The provided URL is invalid.'));
+    }
   }
 }
 
@@ -537,7 +563,7 @@ function update_manager_install_form_submit($form, &$form_state) {
     return;
   }
 
-  $files = $archive->listContent();
+  $files = $archive->listContents();
   if (!$files) {
     form_set_error($field, t('Provided archive contains no files.'));
     return;
@@ -569,13 +595,29 @@ function update_manager_install_form_submit($form, &$form_state) {
     return;
   }
   
+  $project_real_location = drupal_realpath($project_location);
   $arguments = array(
     'project' => $project,
     'updater_name' => get_class($updater),
-    'local_url' => drupal_realpath($project_location),
+    'local_url' => $project_real_location,
   );
 
-  return system_run_authorized('update_authorize_run_install', drupal_get_path('module', 'update') . '/update.authorize.inc', $arguments);
+  // If the owner of the directory we extracted is the same as the
+  // owner of our configuration directory (e.g. sites/default) where we're
+  // trying to install the code, there's no need to prompt for FTP/SSH
+  // credentials. Instead, we instantiate a FileTransferLocal and invoke
+  // update_authorize_run_install() directly.
+  if (fileowner($project_real_location) == fileowner(conf_path())) {
+    module_load_include('inc', 'update', 'update.authorize');
+    $filetransfer = new FileTransferLocal(DRUPAL_ROOT);
+    call_user_func_array('update_authorize_run_install', array_merge(array($filetransfer), $arguments));
+  }
+  // Otherwise, go through the regular workflow to prompt for FTP/SSH
+  // credentials and invoke update_authorize_run_install() indirectly with
+  // whatever FileTransfer object authorize.php creates for us.
+  else {
+    system_run_authorized('update_authorize_run_install', drupal_get_path('module', 'update') . '/update.authorize.inc', $arguments);
+  }
 }
 
 /**
@@ -615,21 +657,18 @@ function _update_manager_extract_directory() {
  * @param string $file
  *   The filename of the archive you wish to extract.
  * @param string $directory
- *   The directory you wish to extract the archive info.
- *
- * @return
- *    The Archive_Tar class used to extract the archive.
+ *   The directory you wish to extract the archive into.
+ * @return Archiver
+ *   The Archiver object used to extract the archive.
  * @throws Exception on failure.
- *
- * @todo Currently, this is hard-coded to only support .tar.gz. This is an API
- * bug, and should be fixed. See http://drupal.org/node/604618.
  */
 function update_manager_archive_extract($file, $directory) {
-  $archive_tar = new Archive_Tar(drupal_realpath($file));
-  if (!$archive_tar->extract($directory)) {
-    throw new Exception(t('Unable to extract %file', array('%file' => $file)));
+  $archiver = archiver_get_archiver($file);
+  if (!$archiver) {
+    throw new Exception(t('Cannot extract %file, not a valid archive.', array ('%file' => $file)));
   }
-  return $archive_tar;
+  $archiver->extract($directory);
+  return $archiver;
 }
 
 /**

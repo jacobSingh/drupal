@@ -1,5 +1,5 @@
 <?php
-// $Id: update.inc,v 1.16 2009-10-24 02:22:53 webchick Exp $
+// $Id: update.inc,v 1.18 2009-10-24 23:19:21 webchick Exp $
 
 /**
  * @file
@@ -132,8 +132,16 @@ function update_fix_d7_requirements() {
     db_add_field('url_alias', 'source', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
     db_add_field('url_alias', 'alias', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
 
-    // Add the deliver_callback column to {menu_router}.
+    // Add new columns to {menu_router}.
     db_add_field('menu_router', 'delivery_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+    db_add_field('menu_router', 'context', array(
+      'description' => 'Only for local tasks (tabs) - the context of a local task to control its placement.',
+      'type' => 'int',
+      'not null' => TRUE,
+      'default' => 0,
+    ));
+    db_add_field('menu_router', 'theme_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+    db_add_field('menu_router', 'theme_arguments', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
 
     // Add the role_permisson table.
     $schema['role_permission'] = array(
@@ -156,6 +164,125 @@ function update_fix_d7_requirements() {
       ),
     );
     db_create_table('role_permission', $schema['role_permission']);
+
+    // Add the {semaphore} table in case menu_rebuild() gets called during
+    // an update.
+    $schema['semaphore'] = array(
+      'description' => 'Table for holding semaphores, locks, flags, etc. that cannot be stored as Drupal variables since they must not be cached.',
+      'fields' => array(
+        'name' => array(
+          'description' => 'Primary Key: Unique name.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => ''
+        ),
+        'value' => array(
+          'description' => 'A value for the semaphore.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => ''
+        ),
+        'expire' => array(
+          'description' => 'A Unix timestamp with microseconds indicating when the semaphore should expire.',
+          'type' => 'float',
+          'size' => 'big',
+          'not null' => TRUE
+        ),
+      ),
+      'indexes' => array('value' => array('value')),
+      'primary key' => array('name'),
+    );
+    db_create_table('semaphore', $schema['semaphore']);
+
+    $schema['date_format_type'] = array(
+      'description' => 'Stores configured date format types.',
+      'fields' => array(
+        'type' => array(
+          'description' => 'The date format type, e.g. medium.',
+          'type' => 'varchar',
+          'length' => 64,
+          'not null' => TRUE,
+        ),
+        'title' => array(
+          'description' => 'The human readable name of the format type.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+        ),
+        'locked' => array(
+          'description' => 'Whether or not this is a system provided format.',
+          'type' => 'int',
+          'size' => 'tiny',
+          'default' => 0,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('type'),
+    );
+
+    $schema['date_formats'] = array(
+      'description' => 'Stores configured date formats.',
+      'fields' => array(
+        'dfid' => array(
+          'description' => 'The date format identifier.',
+          'type' => 'serial',
+          'not null' => TRUE,
+          'unsigned' => TRUE,
+        ),
+        'format' => array(
+          'description' => 'The date format string.',
+          'type' => 'varchar',
+          'length' => 100,
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'The date format type, e.g. medium.',
+          'type' => 'varchar',
+          'length' => 64,
+          'not null' => TRUE,
+        ),
+        'locked' => array(
+          'description' => 'Whether or not this format can be modified.',
+          'type' => 'int',
+          'size' => 'tiny',
+          'default' => 0,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('dfid'),
+      'unique keys' => array('formats' => array('format', 'type')),
+    );
+
+    $schema['date_format_locale'] = array(
+      'description' => 'Stores configured date formats for each locale.',
+      'fields' => array(
+        'format' => array(
+          'description' => 'The date format string.',
+          'type' => 'varchar',
+          'length' => 100,
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'The date format type, e.g. medium.',
+          'type' => 'varchar',
+          'length' => 64,
+          'not null' => TRUE,
+        ),
+        'language' => array(
+          'description' => 'A {languages}.language for this format to be used with.',
+          'type' => 'varchar',
+          'length' => 12,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('type', 'language'),
+    );
+
+    db_create_table('date_format_type', $schema['date_format_type']);
+    db_create_table('date_formats', $schema['date_formats']);
+    db_create_table('date_format_locale', $schema['date_format_locale']);
 
     // Add column for locale context.
     if (db_table_exists('locales_source')) {
