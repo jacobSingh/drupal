@@ -113,9 +113,10 @@ Drupal.overlayChild.behaviors.parseLinks = function (context, settings) {
         $(this).attr('target', '_new');
       }
       else {
-        $(this).click(function () {
-          var linkURL = parent.Drupal.overlay.addOverlayParam($(this).attr('href'));
-          parent.Drupal.overlay.load(linkURL);
+        $(this).each(function(){
+          this.href = parent.Drupal.overlay.fragmentizeLink(this);
+        }).click(function () {
+          parent.window.location.href = this.href;
           return false;
         });
       }

@@ -58,18 +58,6 @@ function overlay_init() {
     else {
       // Otherwise add overlay parent code and our behavior.
       overlay_set_mode('parent');
-      // Special case for when overlay.module was just enabled; redirect to
-      // the homepage and reopen the modules page inside the overlay.
-      if (isset($_SESSION['overlay_just_enabled'])) {
-        if ($_SESSION['overlay_just_enabled'] == 'step1' && $_GET['q'] == 'admin/config/modules') {
-          $_SESSION['overlay_just_enabled'] = 'step2';
-          drupal_goto('<front>');
-        }
-        else if ($_SESSION['overlay_just_enabled'] == 'step2' && $_GET['q'] == variable_get('site_frontpage','node')) {
-          unset($_SESSION['overlay_just_enabled']);
-          drupal_add_js(array('overlay' => array('autoOpen' => url('admin/config/modules'))), 'setting');
-        }
-      }
     }
   }
 }
@@ -89,6 +77,15 @@ function overlay_element_info_alter(&$types) {
 function overlay_library() {
   $module_path = drupal_get_path('module', 'overlay');
 
+  // jQuery BBQ plugin.
+  $libraries['jquery-bbq'] = array(
+    'title' => 'jQuery BBQ',
+    'website' => 'http://benalman.com/projects/jquery-bbq-plugin/',
+    'version' => '1.0.2',
+    'js' => array(
+      'misc/jquery.ba-bbq.js',
+    ),
+  );
   // Overlay parent.
   $libraries['parent'] = array(
     'title' => 'Overlay: Parent',
@@ -383,6 +380,7 @@ function overlay_set_mode($mode = NULL) {
   switch ($overlay_mode) {
     case 'parent':
       drupal_add_library('overlay', 'parent');
+      drupal_add_library('overlay', 'jquery-bbq');
 
       // Allow modules to act upon overlay events.
       module_invoke_all('overlay_parent_initialize');

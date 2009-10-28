@@ -3,74 +3,39 @@
 (function ($) {
 
 /**
- * Open or modify overlay based on clicks of links which pass isAdminLink.
+ * Open the overlay, or load content into it, when an admin link is clicked.
  */
 Drupal.behaviors.overlayParent = {
   attach: function (context, settings) {
-    // Attach on all admin links without the 'overlay-exclude' class.
-    $('a:not(.overlay-exclude)').filter(function () {
+    // Alter all admin links so that they will open in the overlay.
+    $('a').filter(function () {
       return Drupal.overlay.isAdminLink(this.href);
     })
-    // Respond to their click event.
-    .once('overlay').click(function () {
-
-      // Append render variable, so the server side can choose the right
-      // rendering and add child modal frame code to the page if needed.
-      var linkURL = Drupal.overlay.addOverlayParam($(this).attr('href'));
-
-      // If the modal frame is already open, replace the loaded document with
-      // this new one. Keeps browser history.
-      if (Drupal.overlay.isOpen) {
-        Drupal.overlay.load(linkURL);
-        return false;
-      }
-
-      // There is not an overlay opened yet, we should open a new one.
-      var overlayOptions = {
-        url: linkURL,
-
-        // Remove active class from all header buttons.
-        onOverlayClose: function () {
-          $('a.overlay-processed').each(function () {
-            $(this).removeClass('active');
-          });
-        },
-        draggable: false
-      };
-      Drupal.overlay.open(overlayOptions);
-
-      // Prevent default action of the link click event.
-      return false;
+    .once('overlay')
+    .each(function () {
+      // Move the link destination to a URL fragment.
+      this.href = Drupal.overlay.fragmentizeLink(this);
+    })
+    .click(function () {
+      // Simulate the native click event. jQuery UI Dialog prevents all clicks
+      // outside a modal dialog.
+      window.location.href = this.href;
     });
 
-    // Automatically open an overlay if defined in Drupal.settings.overlay.autoOpen.
-    if (Drupal.settings.overlay.autoOpen) {
-      var linkURL = Drupal.overlay.addOverlayParam(Drupal.settings.overlay.autoOpen);
-
-      // Unset autoOpen to prevent looping.
-      delete Drupal.settings.overlay.autoOpen;
-
-      // If the modal frame is already open, replace the loaded document with
-      // this new one. Keeps browser history.
-      if (Drupal.overlay.isOpen) {
-        Drupal.overlay.load(linkURL);
-        return false;
-      }
-
-      // There is not an overlay opened yet, we should open a new one.
-      var overlayOptions = {
-        url: linkURL,
-
-        // Remove active class from all header buttons.
-        onOverlayClose: function () {
-          $('a.overlay-processed').each(function () {
-            $(this).removeClass('active');
-          });
-        },
-        draggable: false
-      };
-      Drupal.overlay.open(overlayOptions);
+    // Make sure the onhashchange handling below is only processed once.
+    if (this.processed) {
+      return;
     }
+    this.processed = true;
+
+    // When the hash (URL fragment) changes, open the overlay if needed.
+    $(window).bind('hashchange', function (e) {
+      Drupal.overlay.trigger();
+    });
+
+    // Trigger the hashchange event once, after the page is loaded, so that
+    // permalinks open the overlay.
+    $(window).trigger('hashchange');
   }
 };
 
@@ -130,7 +95,7 @@ Drupal.overlay.open = function (options) {
   self.create();
 
   // Open the dialog offscreen where we can set its size, etc.
-  self.iframe.$container.dialog('option', { position: ['-999em', '-999em'] }).dialog('open');
+  var temp = self.iframe.$container.dialog('option', { position: ['-999em', '-999em'] }).dialog('open');;
 
   return true;
 };
@@ -167,7 +132,11 @@ Drupal.overlay.create = function () {
       .attr('href', '#')
       .attr('title', Drupal.t('Close'))
       .unbind('click')
-      .bind('click', function () { try { self.close(); } catch(e) {}; return false; });
+      .bind('click', function () {
+        try { self.close(); } catch(e) {}
+        // Allow the click event to propagate, to clear the hash state.
+        return true;
+      });
 
     // Replace the title span element with an h1 element for accessibility.
     $('.overlay .ui-dialog-title').replaceWith('<h1 id="ui-dialog-title-overlay-container" class="ui-dialog-title" tabindex="-1" unselectable="on">' + $('.overlay .ui-dialog-title').html() + '</h1>');
@@ -273,7 +242,10 @@ Drupal.overlay.load = function (url) {
   if (doc.document) {
     doc = doc.document;
   }
-  doc.location.href = url;
+  // location.replace doesn't create a history entry. location.href does.
+  // In this case, we want location.replace, as we're creating the history
+  // entry using URL fragments.
+  doc.location.replace(url);
 };
 
 /**
@@ -551,7 +523,7 @@ Drupal.overlay.unbindChild = function (iFrameWindow) {
   iFrameWindow.jQuery(iFrameWindow.document).unbind('keydown.overlay-event');
 
   // Change the overlay title.
-  $('.overlay .ui-dialog-title').html(Drupal.t('Please, wait...'));
+  $('.overlay .ui-dialog-title').html(Drupal.t('Please wait...'));
 
   // Hide the iframe element.
   self.iframe.$element.fadeOut('fast');
@@ -747,6 +719,7 @@ Drupal.overlay.resize = function (size) {
  * Add overlay rendering GET parameter to the given href.
  */
 Drupal.overlay.addOverlayParam = function (href) {
+  return $.param.querystring(href, {'render': 'overlay'});
   // Do not process links with an empty href, or that only have the fragment or
   // which are external links.
   if (href.length > 0 && href.charAt(0) != '#' && href.indexOf('http') != 0 && href.indexOf('https') != 0) {
@@ -760,5 +733,82 @@ Drupal.overlay.addOverlayParam = function (href) {
   }
   return href;
 };
+
+/**
+ * Open, reload, or close the overlay, based on the current URL fragment.
+ */
+Drupal.overlay.trigger = function () {
+  // Get the overlay URL from the current URL fragment.
+  var state = $.bbq.getState('overlay');
+  if (state) {
+    // Append render variable, so the server side can choose the right
+    // rendering and add child modal frame code to the page if needed.
+    var linkURL = Drupal.overlay.addOverlayParam(Drupal.settings.basePath + state);
+
+    // If the modal frame is already open, replace the loaded document with
+    // this new one.
+    if (Drupal.overlay.isOpen) {
+      Drupal.overlay.load(linkURL);
+    }
+    else {
+      // There is not an overlay opened yet; we should open a new one.
+      var overlayOptions = {
+        url: linkURL,
+        onOverlayClose: function () {
+          // Clear the overlay URL fragment.
+          $.bbq.pushState();
+          // Remove active class from all header buttons.
+          $('a.overlay-processed').each(function () {
+            $(this).removeClass('active');
+          });
+        },
+        draggable: false
+      };
+      Drupal.overlay.open(overlayOptions);
+    }
+  }
+  else {
+    // If there is no overlay URL in the fragment, close the overlay.
+    try {
+      Drupal.overlay.close();
+    }
+    catch(e) {
+      // The close attempt may have failed because the overlay isn't open.
+      // If so, no special handling is needed here.
+    }
+  }
+};
+
+/**
+ * Make a regular admin link into a URL that will trigger the overlay to open.
+ *
+ * @param link
+ *   A Javascript Link object (i.e. an <a> element).
+ * @return
+ *   A URL that will trigger the overlay (in the form
+ *   /node/1#overlay=admin/config).
+ */
+Drupal.overlay.fragmentizeLink = function (link) {
+  // Don't operate on links that are already overlay-ready.
+  var params = $.deparam.fragment(link.href);
+  if (params.overlay) {
+    return link.href;
+  }
+
+  // Determine the link's original destination, and make it relative to the
+  // Drupal site.
+  var fullpath = link.pathname;
+  var re = new RegExp('^' + Drupal.settings.basePath);
+  var path = fullpath.replace(re, '');
+  // Preserve existing query and fragment parameters in the URL.
+  var fragment = link.hash;
+  var querystring = link.search;
+  var destination = path + querystring + fragment;
+
+  // Assemble the overlay-ready link.
+  var base = window.location.href;
+  link.href = $.param.fragment(base, {'overlay':destination});
+  return link.href;
+}
 
 })(jQuery);
