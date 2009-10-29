@@ -4,9 +4,11 @@
 /**
  * Implement hook_enable().
  *
- * After enabling, remember that Overlay was just enabled in a session variable.
- * Now we can react to the enabling of the module at the next page load in overlay_init().
+ * If the module is being enabled through the admin UI, and not from an
+ * install profile, reopen the modules page in an overlay.
  */
 function overlay_enable() {
-  drupal_goto('<front>', array('fragment' => 'overlay=admin/config/modules'));
+  if (strpos($_GET['q'], 'admin/config/modules') === 0) {
+    drupal_goto('<front>', array('fragment' => 'overlay=admin/config/modules'));
+  }
 }
