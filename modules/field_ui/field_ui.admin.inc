@@ -1,5 +1,5 @@
 <?php
-// $Id: field_ui.admin.inc,v 1.24 2009-10-24 05:26:13 webchick Exp $
+// $Id: field_ui.admin.inc,v 1.26 2009-10-29 07:21:04 webchick Exp $
 
 /**
  * @file
@@ -523,6 +523,7 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
     else {
       $instance = array(
         'field_name' => $field['field_name'],
+        'object_type' => $obj_type,
         'bundle' => $bundle,
         'label' => $values['label'],
         'widget' => array(
@@ -1326,7 +1327,7 @@ function field_ui_get_destinations($destinations) {
   if ($destinations) {
     $query['destinations'] = $destinations;
   }
-  return array($path, $query);
+  return array($path, array('query' => $query));
 }
 
 /**

@@ -1,5 +1,5 @@
 <?php
-// $Id: update.manager.inc,v 1.8 2009-10-27 03:34:01 webchick Exp $
+// $Id: update.manager.inc,v 1.11 2009-10-29 07:11:50 webchick Exp $
 
 /**
  * @file
@@ -215,8 +215,8 @@ function update_manager_update_form($form, $form_state = array(), $context) {
       '#header' => $headers,
       '#options' => $projects['enabled'],
     );
-    if (count($projects) > 1) {
-      $form['projects']['#prefix'] = '<h2>' . t('Enabled add-ons') . '</h2>';
+    if (!empty($projects['disabled'])) {
+      $form['projects']['#prefix'] = '<h2>' . t('Enabled') . '</h2>';
     }
   }
 
@@ -226,10 +226,8 @@ function update_manager_update_form($form, $form_state = array(), $context) {
       '#header' => $headers,
       '#options' => $projects['disabled'],
       '#weight' => 1,
+      '#prefix' => '<h2>' . t('Disabled') . '</h2>',
     );
-    if (count($projects) > 1) {
-      $form['disabled_projects']['#prefix'] = '<h2>' . t('Disabled add-ons') . '</h2>';
-    }
   }
 
   // If either table has been printed yet, we need a submit button and to
@@ -326,14 +324,21 @@ function update_manager_update_form_submit($form, &$form_state) {
  * Batch callback invoked when the download batch is completed.
  */
 function update_manager_download_batch_finished($success, $results) {
-  if ($success) {
-    $_SESSION['update_manager_update_projects'] = $results;
+  if (!empty($results['errors'])) {
+    $error_list = array(
+      'title' => t('Downloading updates failed:'),
+      'items' => $results['errors'],
+    );
+    drupal_set_message(theme('item_list', $error_list), 'error');
+  }
+  elseif ($success) {
+    $_SESSION['update_manager_update_projects'] = $results['projects'];
     drupal_goto('admin/update/confirm');
   }
   else {
-    foreach($results as $project => $message) {
-      drupal_set_message($message, 'error');
-    }
+    // Ideally we're catching all Exceptions, so they should never see this,
+    // but just in case, we have to tell them something.
+    drupal_set_message(t('Fatal error trying to download.'), 'error');
   }
 }
 
@@ -396,9 +401,11 @@ function update_manager_confirm_update_form($form, &$form_state) {
  * update, do so now. Otherwise, pull information about all the required
  * updates out of the SESSION, figure out what Updater class is needed for
  * each one, generate an array of update operations to perform, and hand it
- * all off to system_run_authorized() where we redirect to authorize.php.
+ * all off to system_authorized_init(), then redirect to authorize.php.
  *
- * @see system_run_authorized()
+ * @see update_authorize_run_update()
+ * @see system_authorized_init()
+ * @see system_authorized_get_url()
  */
 function update_manager_confirm_update_form_submit($form, &$form_state) {
   if ($form_state['values']['site_offline'] == TRUE) {
@@ -440,7 +447,8 @@ function update_manager_confirm_update_form_submit($form, &$form_state) {
     // credentials and invoke update_authorize_run_update() indirectly with
     // whatever FileTransfer object authorize.php creates for us.
     else {
-      system_run_authorized('update_authorize_run_update', drupal_get_path('module', 'update') . '/update.authorize.inc', array($updates));
+      system_authorized_init('update_authorize_run_update', drupal_get_path('module', 'update') . '/update.authorize.inc', array($updates));
+      $form_state['redirect'] = system_authorized_get_url();
     }
   }
 }
@@ -536,6 +544,10 @@ function update_manager_install_form_validate($form, &$form_state) {
  * the live webroot. If everything is successful, setup an operation to run
  * via authorize.php which will copy the extracted files from the temporary
  * location into the live site.
+ *
+ * @see update_authorize_run_install()
+ * @see system_authorized_init()
+ * @see system_authorized_get_url()
  */
 function update_manager_install_form_submit($form, &$form_state) {
   if ($form_state['values']['project_url']) {
@@ -616,7 +628,8 @@ function update_manager_install_form_submit($form, &$form_state) {
   // credentials and invoke update_authorize_run_install() indirectly with
   // whatever FileTransfer object authorize.php creates for us.
   else {
-    system_run_authorized('update_authorize_run_install', drupal_get_path('module', 'update') . '/update.authorize.inc', $arguments);
+    system_authorized_init('update_authorize_run_install', drupal_get_path('module', 'update') . '/update.authorize.inc', $arguments);
+    $form_state['redirect'] = system_authorized_get_url();
   }
 }
 
@@ -750,17 +763,13 @@ function update_manager_batch_project_get($project, $url, &$context) {
   if (!isset($context['sandbox']['started'])) {
     $context['sandbox']['started'] = TRUE;
     $context['message'] = t('Downloading %project', array('%project' => $project));
-    $context['success'] = TRUE;
     $context['finished'] = 0;
     return;
   }
 
-  // Assume failure until we make it to the bottom and succeed.
-  $context['success'] = FALSE;
-
   // Actually try to download the file.
   if (!($local_cache = update_manager_file_get($url))) {
-    $context['results'][$project] = t('Failed to download %project from %url', array('%project' => $project, '%url' => $url));
+    $context['results']['errors'][$project] = t('Failed to download %project from %url', array('%project' => $project, '%url' => $url));
     return;
   }
 
@@ -770,7 +779,7 @@ function update_manager_batch_project_get($project, $url, &$context) {
     update_manager_archive_extract($local_cache, $extract_directory);
   }
   catch (Exception $e) {
-    $context['results'][$project] = $e->getMessage();
+    $context['results']['errors'][$project] = $e->getMessage();
     return;
   }
 
@@ -779,13 +788,12 @@ function update_manager_batch_project_get($project, $url, &$context) {
     update_manager_archive_verify($project, $local_cache, $extract_directory);
   }
   catch (Exception $e) {
-    $context['results'][$project] = $e->getMessage();
+    $context['results']['errors'][$project] = $e->getMessage();
     return;
   }
 
   // Yay, success.
-  $context['success'] = TRUE;
-  $context['results'][$project] = $url;
+  $context['results']['projects'][$project] = $url;
   $context['finished'] = 1;
 }
 
