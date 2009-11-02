@@ -1,20 +1,34 @@
 <?php
-// $Id: module.inc,v 1.161 2009-10-16 03:01:54 dries Exp $
+// $Id: module.inc,v 1.164 2009-11-01 22:10:07 webchick Exp $
 
 /**
  * @file
  * API for loading and interacting with Drupal modules.
  */
 
-
 /**
  * Load all the modules that have been enabled in the system table.
+ * 
+ * @param $bootstrap
+ *   Whether to load only the reduced set of modules loaded in "bootstrap mode"
+ *   for cached pages. See bootstrap.inc.
+ * @return
+ *   If $bootstrap is NULL, return a boolean indicating whether all modules
+ *   have been loaded.
  */
 function module_load_all($bootstrap = FALSE) {
-  foreach (module_list(TRUE, $bootstrap) as $module) {
-    drupal_load('module', $module);
+  static $has_run = FALSE;
+
+  if (isset($bootstrap)) {
+    foreach (module_list(TRUE, $bootstrap) as $module) {
+      drupal_load('module', $module);
+    }
+    // $has_run will be TRUE if $bootstrap is FALSE.
+    $has_run = !$bootstrap;
   }
+  return $has_run;
 }
+
 
 /**
  * Collect a list of all loaded modules. During the bootstrap, return only
@@ -62,6 +76,11 @@ function module_list($refresh = FALSE, $bootstrap = FALSE, $sort = FALSE, $fixed
       }
       foreach ($result as $module) {
         if (file_exists($module->filename)) {
+          // First call drupal_get_filename() to prime the static cache for
+          // later lookups of the module path. Since we've already queried for
+          // the filename and can pass that in as an argument, this avoids a
+          // database hit for every module when drupal_get_filename() is
+          // subsequently called by drupal_load().
           drupal_get_filename('module', $module->name, $module->filename);
           $list[$module->name] = $module->name;
         }
@@ -221,6 +240,8 @@ function module_enable($module_list, $disable_modules_installed_hook = FALSE) {
     module_implements('', FALSE, TRUE);
     // Force to regenerate the stored list of hook implementations.
     registry_rebuild();
+    // Refresh the schema to include the new enabled module.
+    drupal_get_schema(NULL, TRUE);
 
     // If any modules were newly installed, execute the hook for them.
     if (!$disable_modules_installed_hook && !empty($modules_installed)) {

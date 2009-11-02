@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.542 2009-10-23 22:24:11 webchick Exp $
+// $Id: theme.inc,v 1.545 2009-11-02 00:25:32 webchick Exp $
 
 /**
  * @file
@@ -258,7 +258,7 @@ function _theme_load_registry($theme, $base_theme = NULL, $theme_engine = NULL) 
     $registry = _theme_build_registry($theme, $base_theme, $theme_engine);
    // Only persist this registry if all modules are loaded. This assures a
    // complete set of theme hooks.
-    if (drupal_get_bootstrap_phase() == DRUPAL_BOOTSTRAP_FULL) {
+    if (module_load_all(NULL)) {
       _theme_save_registry($theme, $registry);
       _theme_set_registry($registry);
     }
@@ -1756,10 +1756,10 @@ function theme_table_select_header_cell() {
  */
 function theme_tablesort_indicator($variables) {
   if ($variables['style'] == "asc") {
-    return theme('image', array('path' => 'misc/arrow-asc.png', 'alt' => t('sort icon'), 'title' => t('sort ascending')));
+    return theme('image', array('path' => 'misc/arrow-asc.png', 'alt' => t('sort ascending'), 'title' => t('sort ascending')));
   }
   else {
-    return theme('image', array('path' => 'misc/arrow-desc.png', 'alt' => t('sort icon'), 'title' => t('sort descending')));
+    return theme('image', array('path' => 'misc/arrow-desc.png', 'alt' => t('sort descending'), 'title' => t('sort descending')));
   }
 }
 
@@ -1912,12 +1912,17 @@ function template_preprocess_username(&$variables) {
   else {
     $variables['uid'] = (int)$account->uid;
   }
-  if (empty($account->name)) {
-    $variables['name'] = variable_get('anonymous', t('Anonymous'));
+
+  // Set the name to a formatted name that is safe for printing and
+  // that won't break tables by being too long. Keep an unshortened,
+  // unsanitized version, in case other preproces functions want to implement
+  // their own shortening logic or add markup. If they do so, they must ensure
+  // that $variables['name'] is safe for printing.
+  $name = $variables['name_raw'] = format_username($account);
+  if (drupal_strlen($name) > 20) {
+    $name = drupal_substr($name, 0, 15) . '...';
   }
-  else {
-    $variables['name'] = $account->name;
-  }
+  $variables['name'] = check_plain($name);
 
   $variables['profile_access'] = user_access('access user profiles');
   $variables['link_attributes'] = array();
@@ -1936,12 +1941,6 @@ function template_preprocess_username(&$variables) {
   $variables['link_options']['html'] = TRUE;
   // Set a default class.
   $variables['attributes_array'] = array('class' => array('username'));
-  // Shorten the name when it is too long or it will break many tables.
-  if (drupal_strlen($variables['name']) > 20) {
-    $variables['name'] = drupal_substr($variables['name'], 0, 15) . '...';
-  }
-  // Make sure name is safe for use in the theme function.
-  $variables['name'] = check_plain($variables['name']);
 }
 
 /**

@@ -1,5 +1,5 @@
 <?php
-// $Id: form.inc,v 1.387 2009-10-27 04:12:39 webchick Exp $
+// $Id: form.inc,v 1.390 2009-11-02 03:00:28 webchick Exp $
 
 /**
  * @defgroup forms Form builder functions
@@ -1017,7 +1017,7 @@ function form_builder($form_id, $element, &$form_state) {
   // Special handling if we're on the top level form element.
   if (isset($element['#type']) && $element['#type'] == 'form') {
     if (!empty($element['#https']) && variable_get('https', FALSE) &&
-        !menu_path_is_external($element['#action'])) {
+        !url_is_external($element['#action'])) {
       global $base_root;
 
       // Not an external URL so ensure that it is secure.
@@ -2774,7 +2774,7 @@ function theme_form_element($variables) {
   }
 
   $output = '<div class="' . implode(' ', $class) . '">' . "\n";
-  $required = !empty($element['#required']) ? '<span class="form-required" title="' . $t('This field is required.') . '">*</span>' : '';
+  $required = !empty($element['#required']) ? theme('form_required_marker', array('element' => $element)) : '';
 
   if (!empty($element['#title']) && empty($element['#form_element_skip_title'])) {
     $title = $element['#title'];
@@ -2795,6 +2795,27 @@ function theme_form_element($variables) {
   $output .= "</div>\n";
 
   return $output;
+}
+
+/**
+ * Theme the marker for required form elements.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - element: An associative array containing the properties of the element.
+ * @return
+ *   A string representing the marker to identify required form elements.
+ *
+ * @ingroup themeable
+ */
+function theme_form_required_marker($variables) {
+  // This is also used in the installer, pre-database setup.
+  $t = get_t();
+  $attributes = array(
+    'class' => 'form-required',
+    'title' => $t('This field is required.'),
+  );
+  return '<span' . drupal_attributes($attributes) . '>*</span>';
 }
 
 /**
@@ -3054,7 +3075,7 @@ function batch_process($redirect = NULL, $url = 'batch', $redirect_callback = 'd
       'progressive' => TRUE,
       'url' => $url,
       'url_options' => array(),
-      'source_page' => $_GET['q'],
+      'source_url' => $_GET['q'],
       'redirect' => $redirect,
       'theme' => $GLOBALS['theme_key'],
       'redirect_callback' => $redirect_callback,

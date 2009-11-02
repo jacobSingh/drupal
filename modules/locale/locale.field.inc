@@ -1,5 +1,5 @@
 <?php
-// $Id: locale.field.inc,v 1.1 2009-10-16 02:04:42 webchick Exp $
+// $Id: locale.field.inc,v 1.3 2009-11-02 05:57:05 webchick Exp $
 
 /**
  * @file
@@ -17,7 +17,7 @@ function locale_field_node_form_update_field_language($form, &$form_state, $rese
   $available_languages = field_multilingual_content_languages();
   // @todo: Unify language neutral language codes.
   $selected_language = empty($node->language) ? FIELD_LANGUAGE_NONE : $node->language;
-  list(, , $bundle) = field_extract_ids('node', $node);
+  list(, , $bundle) = entity_extract_ids('node', $node);
 
   foreach (field_info_instances('node', $bundle) as $instance) {
     $field_name = $instance['field_name'];
@@ -44,7 +44,7 @@ function locale_field_fallback_view(&$output, $context) {
   // Lazily init fallback values and candidates to avoid unnecessary calls.
   $fallback_values = array();
   $fallback_candidates = NULL;
-  list(, , $bundle) = field_extract_ids($context['obj_type'], $context['object']);
+  list(, , $bundle) = entity_extract_ids($context['obj_type'], $context['object']);
 
   foreach (field_info_instances($context['obj_type'], $bundle) as $instance) {
     $field_name = $instance['field_name'];
@@ -52,7 +52,7 @@ function locale_field_fallback_view(&$output, $context) {
 
     // If the items array is empty then we have a missing field translation.
     // @todo: Verify this assumption.
-    if (empty($output[$field_name]['items'])) {
+    if (isset($output[$field_name]) && empty($output[$field_name]['items'])) {
       if (!isset($fallback_candidates)) {
         require_once DRUPAL_ROOT . '/includes/language.inc';
         $fallback_candidates = language_fallback_get_candidates();

@@ -1,10 +1,40 @@
 <?php
-// $Id: bootstrap.inc,v 1.315 2009-10-26 13:00:54 dries Exp $
+// $Id: bootstrap.inc,v 1.320 2009-11-02 03:46:43 webchick Exp $
 
 /**
  * @file
  * Functions that need to be loaded on every Drupal request.
  */
+
+/**
+ * The current system version.
+ */
+define('VERSION', '7.0-dev');
+
+/**
+ * Core API compatibility.
+ */
+define('DRUPAL_CORE_COMPATIBILITY', '7.x');
+
+/**
+ * Minimum supported version of PHP.
+ */
+define('DRUPAL_MINIMUM_PHP',    '5.2.0');
+
+/**
+ * Minimum recommended value of PHP memory_limit.
+ */
+define('DRUPAL_MINIMUM_PHP_MEMORY_LIMIT',    '16M');
+
+/**
+ * Minimum supported version of MySQL, if it is used.
+ */
+define('DRUPAL_MINIMUM_MYSQL',  '5.0');
+
+/**
+ * Minimum supported version of PostgreSQL, if it is used.
+ */
+define('DRUPAL_MINIMUM_PGSQL',  '8.3');
 
 /**
  * Indicates that the item should never be removed unless explicitly told to
@@ -601,7 +631,9 @@ function drupal_settings_initialize() {
  *   The filename of the requested item.
  */
 function drupal_get_filename($type, $name, $filename = NULL) {
-  $files = &drupal_static(__FUNCTION__, array());
+  // The location of files will not change during the request, so do not use
+  // drupal_static().
+  static $files = array();
 
   if (!isset($files[$type])) {
     $files[$type] = array();
@@ -645,11 +677,12 @@ function drupal_get_filename($type, $name, $filename = NULL) {
         $mask = "/$name\.$type$/";
       }
 
-      if (function_exists('drupal_system_listing')) {
-        $matches = drupal_system_listing($mask, $dir, 'name', 0);
-        if (!empty($matches[$name]->uri)) {
-          $files[$type][$name] = $matches[$name]->uri;
-        }
+      if (!function_exists('drupal_system_listing')) {
+        require_once DRUPAL_ROOT . '/includes/common.inc';
+      }
+      $matches = drupal_system_listing($mask, $dir, 'name', 0);
+      if (!empty($matches[$name]->uri)) {
+        $files[$type][$name] = $matches[$name]->uri;
       }
     }
   }
@@ -804,7 +837,9 @@ function bootstrap_invoke_all($hook) {
  *   TRUE if the item is loaded or has already been loaded.
  */
 function drupal_load($type, $name) {
-  $files = &drupal_static(__FUNCTION__, array());
+  // Once a file is included this can't be reversed during a request so do not
+  // use drupal_static() here.
+  static $files = array();
 
   if (isset($files[$type][$name])) {
     return TRUE;
@@ -1070,6 +1105,9 @@ function drupal_serve_page_from_cache(stdClass $cache) {
     header('Vary: Accept-Encoding', FALSE);
     // If page_compression is enabled, the cache contains gzipped data.
     if ($return_compressed) {
+      // $cache->data is already gzip'ed, so make sure zlib.output_compression
+      // does not compress it once more.
+      ini_set('zlib.output_compression', '0');
       header('Content-Encoding: gzip');
     }
     else {
@@ -1806,7 +1844,10 @@ function drupal_get_schema($table = NULL, $rebuild = FALSE) {
       require_once DRUPAL_ROOT . '/includes/common.inc';
       // Invoke hook_schema for all modules.
       foreach (module_implements('schema') as $module) {
-        $current = module_invoke($module, 'schema');
+        // Cast the result of hook_schema() to an array, as a NULL return value
+        // would cause array_merge() to set the $schema variable to NULL as well.
+        // That would break modules which use $schema further down the line.
+        $current = (array) module_invoke($module, 'schema');
         _drupal_schema_initialize($module, $current);
         $schema = array_merge($schema, $current);
       }

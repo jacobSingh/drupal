@@ -1,5 +1,5 @@
 <?php
-// $Id: field_test.module,v 1.35 2009-10-24 17:02:51 webchick Exp $
+// $Id: field_test.module,v 1.38 2009-11-02 03:41:58 webchick Exp $
 
 define('FIELD_TEST_ELEMENT_ID', 1);
 define('FIELD_TEST_BUNDLE', 'test_bundle');
@@ -98,10 +98,63 @@ function field_test_entity_info_alter(&$entity_info) {
     $entity_info[$obj_type]['translation']['field_test'] = $translatable;
   }
   // Disable locale as a translation handler.
-  foreach (field_info_fieldable_types() as $obj_type => $info) {
+  foreach ($entity_info as $obj_type => $info) {
     $entity_info[$obj_type]['translation']['locale'] = FALSE;
   }
 }
+
+/**
+ * Implement hook_field_widget_settings_form().
+ */
+function field_test_field_widget_settings_form($field, $instance) {
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+
+  $form['test_widget_setting'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Field test field widget setting'),
+    '#default_value' => $settings['test_widget_setting'],
+    '#required' => FALSE,
+    '#description' => t('A dummy form element to simulate field widget setting.'),
+  );
+
+  return $form;
+}
+
+/**
+ * Implement hook_field_instance_settings_form().
+ */
+function field_test_field_instance_settings_form($field, $instance) {
+  $settings = $instance['settings'];
+
+  $form['test_instance_setting'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Field test field instance setting'),
+    '#default_value' => $settings['test_instance_setting'],
+    '#required' => FALSE,
+    '#description' => t('A dummy form element to simulate field instance setting.'),
+  );
+
+  return $form;
+}
+
+/**
+ * Implement hook_field_settings_form().
+ */
+function field_test_field_settings_form($field, $instance, $has_data) {
+  $settings = $field['settings'];
+
+  $form['test_field_setting'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Field test field setting'),
+    '#default_value' => $settings['test_field_setting'],
+    '#required' => FALSE,
+    '#description' => t('A dummy form element to simulate field setting.'),
+  );
+
+  return $form;
+}
+
 
 /**
  * Create a new bundle for test_entity objects.
@@ -359,6 +412,7 @@ function field_test_field_info() {
   return array(
     'test_field' => array(
       'label' => t('Test Field'),
+      'description' => t('Dummy field type used for tests.'),
       'settings' => array(
         'test_field_setting' => 'dummy test string',
         'changeable' => 'a changeable field setting',
@@ -489,40 +543,12 @@ function field_test_field_widget_info() {
 
 /**
  * Implement hook_field_widget().
- *
- * Attach a single form element to the form. It will be built out and
- * validated in the callback(s) listed in hook_element_info(). We build it
- * out in the callbacks rather than here in hook_widget so it can be
- * plugged into any module that can provide it with valid
- * $field information.
- *
- * If there are multiple values for this field, the field module will
- * call this function as many times as needed.
- *
- * @param $form
- *   the entire form array, $form['#node'] holds node information
- * @param $form_state
- *   the form_state, $form_state['values'][$field['field_name']]
- *   holds the field's form values.
- * @param $field
- *   The field structure.
- * @param $instance
- *   the instance array
- * @param $items
- *   array of default values for this field
- * @param $delta
- *   the order of this item in the array of subelements (0, 1, 2, etc)
- *
- * @return
- *   the form item for a single element for this field
  */
-function field_test_field_widget(&$form, &$form_state, $field, $instance, $langcode, $items, $delta = 0) {
+function field_test_field_widget(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
   $element = array(
-    'value' => array(
-      '#title' => $instance['label'],
+    'value' => $element + array(
       '#type' => 'textfield',
       '#default_value' => isset($items[$delta]['value']) ? $items[$delta]['value'] : '',
-      '#required' => $instance['required'],
     ),
   );
   return $element;
@@ -674,7 +700,8 @@ function field_test_entity_info_translatable($obj_type = NULL, $translatable = N
   $stored_value = &drupal_static(__FUNCTION__, array());
   if (isset($obj_type)) {
     $stored_value[$obj_type] = $translatable;
-    _field_info_collate_types(TRUE);
+    drupal_static_reset('entity_get_info');
+    cache_clear_all('entity_info', 'cache');
   }
   return $stored_value;
 }
@@ -798,7 +825,7 @@ function field_test_field_storage_load($obj_type, $objects, $age, $fields, $opti
 function field_test_field_storage_write($obj_type, $object, $op, $fields) {
   $data = _field_test_storage_data();
 
-  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = entity_extract_ids($obj_type, $object);
 
   foreach ($fields as $field_id) {
     $field = field_info_field_by_id($field_id);
@@ -866,7 +893,7 @@ function field_test_field_storage_write($obj_type, $object, $op, $fields) {
  * Implement hook_field_storage_delete().
  */
 function field_test_field_storage_delete($obj_type, $object, $fields) {
-  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = entity_extract_ids($obj_type, $object);
 
   // Note: reusing field_test_storage_purge(), like field_sql_storage.module
   // does, is highly inefficient in our case...
@@ -884,7 +911,7 @@ function field_test_field_storage_delete($obj_type, $object, $fields) {
 function field_test_field_storage_purge($obj_type, $object, $field, $instance) {
   $data = _field_test_storage_data();
 
-  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = entity_extract_ids($obj_type, $object);
 
   $field_data = &$data[$field['id']];
   foreach (array('current', 'revisions') as $sub_table) {
@@ -904,7 +931,7 @@ function field_test_field_storage_purge($obj_type, $object, $field, $instance) {
 function field_test_field_storage_delete_revision($obj_type, $object, $fields) {
   $data = _field_test_storage_data();
 
-  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = entity_extract_ids($obj_type, $object);
   foreach ($fields as $field_id) {
     $field_data = &$data[$field_id];
     foreach (array('current', 'revisions') as $sub_table) {
@@ -1000,11 +1027,11 @@ function field_test_field_storage_query($field_id, $conditions, $count, &$cursor
           $cursor++;
           // If querying all revisions and the entity type has revisions, we need
           // to key the results by revision_ids.
-          $entity_type = field_info_fieldable_types($row->type);
+          $entity_type = entity_get_info($row->type);
           $id = ($load_current || empty($entity_type['object keys']['revision'])) ? $row->entity_id : $row->revision_id;
 
           if (!isset($return[$row->type][$id])) {
-            $return[$row->type][$id] = field_create_stub_entity($row->type, array($row->entity_id, $row->revision_id, $row->bundle));
+            $return[$row->type][$id] = entity_create_stub_entity($row->type, array($row->entity_id, $row->revision_id, $row->bundle));
             $obj_count++;
           }
         }

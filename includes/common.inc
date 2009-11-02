@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1031 2009-10-27 19:29:12 webchick Exp $
+// $Id: common.inc,v 1.1038 2009-11-02 03:46:43 webchick Exp $
 
 /**
  * @file
@@ -1289,14 +1289,14 @@ function fix_gpc_magic() {
  *   check_plain, to escape HTML characters. Use this for any output that's
  *   displayed within a Drupal page.
  *   @code
- *     drupal_set_title($title = t("@name's blog", array('@name' => $account->name)), PASS_THROUGH);
+ *     drupal_set_title($title = t("@name's blog", array('@name' => format_username($account))), PASS_THROUGH);
  *   @endcode
  *
  * - %variable, which indicates that the string should be HTML escaped and
  *   highlighted with theme_placeholder() which shows up by default as
  *   <em>emphasized</em>.
  *   @code
- *     $message = t('%name-from sent %name-to an e-mail.', array('%name-from' => $user->name, '%name-to' => $account->name));
+ *     $message = t('%name-from sent %name-to an e-mail.', array('%name-from' => format_username($user), '%name-to' => format_username($account)));
  *   @endcode
  *
  * When using t(), try to put entire sentences and strings in one t() call.
@@ -2330,6 +2330,29 @@ function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
 }
 
 /**
+ * Format a username.
+ *
+ * By default, the passed in object's 'name' property is used if it exists, or
+ * else, the site-defined value for the 'anonymous' variable. However, a module
+ * may override this by implementing hook_username_alter(&$name, $account).
+ *
+ * @see hook_username_alter()
+ *
+ * @param $account
+ *   The account object for the user whose name is to be formatted.
+ *
+ * @return
+ *   An unsanitized string with the username to display. The code receiving
+ *   this result must ensure that check_plain() is called on it before it is
+ *   printed to the page.
+ */
+function format_username($account) {
+  $name = !empty($account->name) ? $account->name : variable_get('anonymous', t('Anonymous'));
+  drupal_alter('username', $name, $account);
+  return $name;
+}
+
+/**
  * @} End of "defgroup format".
  */
 
@@ -2352,10 +2375,10 @@ function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
  *   - 'alias': Defaults to FALSE. Whether the given path is a URL alias
  *     already.
  *   - 'external': Whether the given path is an external URL.
- *   - 'language': An optional language object. Used to build the URL to link to
- *     and look up the proper alias for the link.
+ *   - 'language': An optional language object. Used to build the URL to link
+ *     to and look up the proper alias for the link.
  *   - 'https': Whether this URL should point to a secure location. If not
- *     specified, the current scheme is used, so the user stays on http or https
+ *     defined, the current scheme is used, so the user stays on http or https
  *     respectively. TRUE enforces HTTPS and FALSE enforces HTTP, but HTTPS can
  *     only be enforced when the variable 'https' is set to TRUE.
  *   - 'base_url': Only used internally, to modify the base URL when a language
@@ -2370,20 +2393,23 @@ function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
  * alternative than url().
  */
 function url($path = NULL, array $options = array()) {
+  static $url_outbound;
+
   // Merge in defaults.
   $options += array(
     'fragment' => '',
     'query' => array(),
     'absolute' => FALSE,
     'alias' => FALSE,
-    'https' => FALSE,
     'prefix' => ''
   );
 
   if (!isset($options['external'])) {
     // Return an external link if $path contains an allowed absolute URL.
-    // Only call the slow filter_xss_bad_protocol if $path contains a ':' before
-    // any / ? or #.
+    // Only call the slow filter_xss_bad_protocol if $path contains a ':'
+    // before any / ? or #.
+    // Note: we could use url_is_external($path) here, but that would
+    // requre another function call, and performance inside url() is critical.
     $colonpos = strpos($path, ':');
     $options['external'] = ($colonpos !== FALSE && !preg_match('![/?#]!', substr($path, 0, $colonpos)) && filter_xss_bad_protocol($path, FALSE) == check_plain($path));
   }
@@ -2392,7 +2418,14 @@ function url($path = NULL, array $options = array()) {
   $original_path = $path;
 
   // Allow other modules to alter the outbound URL and options.
-  drupal_alter('url_outbound', $path, $options, $original_path);
+  // Since PHP code cannot be unloaded, we statically cache the implementations
+  // of hook_url_outbound_alter() and only invoke them in case there are any.
+  if (!isset($url_outbound)) {
+    $url_outbound = (bool) module_implements('url_outbound_alter');
+  }
+  if ($url_outbound) {
+    drupal_alter('url_outbound', $path, $options, $original_path);
+  }
 
   if ($options['fragment']) {
     $options['fragment'] = '#' . $options['fragment'];
@@ -2410,6 +2443,14 @@ function url($path = NULL, array $options = array()) {
     // Append the query.
     if ($options['query']) {
       $path .= (strpos($path, '?') !== FALSE ? '&' : '?') . drupal_http_build_query($options['query']);
+    }
+    if (isset($options['https']) && variable_get('https', FALSE)) {
+      if ($options['https'] === TRUE) {
+        $path = str_replace('http://', 'https://', $path);
+      }
+      elseif ($options['https'] === FALSE) {
+        $path = str_replace('https://', 'http://', $path);
+      }
     }
     // Reassemble.
     return $path . $options['fragment'];
@@ -2486,6 +2527,16 @@ function url($path = NULL, array $options = array()) {
       return $base . $options['fragment'];
     }
   }
+}
+
+/**
+ * Return TRUE if a path is external (e.g. http://example.com).
+ */
+function url_is_external($path) {
+  $colonpos = strpos($path, ':');
+  // Only call the slow filter_xss_bad_protocol if $path contains a ':'
+  // before any / ? or #.
+  return $colonpos !== FALSE && !preg_match('![/?#]!', substr($path, 0, $colonpos)) && filter_xss_bad_protocol($path, FALSE) == check_plain($path);
 }
 
 /**
@@ -4271,13 +4322,13 @@ function _drupal_bootstrap_full() {
 /**
  * Store the current page in the cache.
  *
- * We try to store a gzipped version of the cache. This requires the
- * PHP zlib extension (http://php.net/manual/en/ref.zlib.php).
- * Presence of the extension is checked by testing for the function
- * gzencode. There are two compression algorithms: gzip and deflate.
- * The majority of all modern browsers support gzip or both of them.
- * We thus only deal with the gzip variant and unzip the cache in case
- * the browser does not accept gzip encoding.
+ * If page_compression is enabled, a gzipped version of the page is stored in
+ * the cache to avoid compressing the output on each request. The cache entry
+ * is unzipped in the relatively rare event that the page is requested by a
+ * client without gzip support.
+ *
+ * Page compression requires the PHP zlib extension
+ * (http://php.net/manual/en/ref.zlib.php).
  *
  * @see drupal_page_header
  */
@@ -4285,8 +4336,6 @@ function drupal_page_set_cache() {
   global $base_root;
 
   if (drupal_page_is_cacheable()) {
-    $cache_page = TRUE;
-
     $cache = (object) array(
       'cid' => $base_root . request_uri(),
       'data' => ob_get_clean(),
@@ -4302,19 +4351,10 @@ function drupal_page_set_cache() {
       $cache->headers[$header_names[$name_lower]] = $value;
     }
 
-    if (variable_get('page_compression', TRUE) && function_exists('gzencode')) {
-      // We do not store the data in case the zlib mode is deflate. This should
-      // be rarely happening.
-      if (zlib_get_coding_type() == 'deflate') {
-        $cache_page = FALSE;
-      }
-      elseif (zlib_get_coding_type() == FALSE) {
+    if ($cache->data) {
+      if (variable_get('page_compression', TRUE) && extension_loaded('zlib')) {
         $cache->data = gzencode($cache->data, 9, FORCE_GZIP);
       }
-      // The remaining case is 'gzip' which means the data is already
-      // compressed and nothing left to do but to store it.
-    }
-    if ($cache_page && $cache->data) {
       cache_set($cache->cid, $cache->data, 'cache_page', $cache->expire, $cache->headers);
     }
     return $cache;
@@ -4459,13 +4499,10 @@ function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1)
     $searchdir[] = "$config/$directory";
   }
 
-  // If the database is not available, we can't use function_exists(), so
-  // we load the file_scan_directory function definition manually.
+  // Get current list of items
   if (!function_exists('file_scan_directory')) {
     require_once DRUPAL_ROOT . '/includes/file.inc';
   }
-
-  // Get current list of items
   foreach ($searchdir as $dir) {
     $files = array_merge($files, file_scan_directory($dir, $mask, array('key' => $key, 'min_depth' => $min_depth)));
   }
@@ -5270,6 +5307,9 @@ function drupal_common_theme() {
     'form_element' => array(
       'render element' => 'element',
     ),
+    'form_required_marker' => array(
+      'arguments' => array('element' => NULL),
+    ),
     'text_format_wrapper' => array(
       'render element' => 'element',
     ),
@@ -5964,7 +6004,20 @@ function entity_get_info($entity_type = NULL) {
           'controller class' => 'DrupalDefaultEntityController',
           'static cache' => TRUE,
           'load hook' => $name . '_load',
+          'bundles' => array(),
+          'object keys' => array(),
+          'cacheable' => TRUE,
+          'translation' => array(),
         );
+        $entity_info[$name]['object keys'] += array(
+          'revision' => '',
+          'bundle' => '',
+        );
+        // If no bundle key is provided, assume a single bundle, named after
+        // the entity type.
+        if (empty($entity_info[$name]['object keys']['bundle']) && empty($entity_info[$name]['bundles'])) {
+          $entity_info[$name]['bundles'] = array($name => array('label' => $entity_info[$name]['label']));
+        }
       }
       // Let other modules alter the entity info.
       drupal_alter('entity_info', $entity_info);
@@ -5973,6 +6026,63 @@ function entity_get_info($entity_type = NULL) {
   }
 
   return empty($entity_type) ? $entity_info : $entity_info[$entity_type];
+}
+
+/**
+ * Helper function to extract id, vid, and bundle name from an entity.
+ *
+ * @param $entity_type
+ *   The entity type; e.g. 'node' or 'user'.
+ * @param $entity
+ *   The entity from which to extract values.
+ * @return
+ *   A numerically indexed array (not a hash table) containing these
+ *   elements:
+ *
+ *   0: primary id of the entity
+ *   1: revision id of the entity, or NULL if $entity_type is not versioned
+ *   2: bundle name of the entity
+ *   3: whether $entity_type's fields should be cached (TRUE/FALSE)
+ */
+function entity_extract_ids($entity_type, $entity) {
+  $info = entity_get_info($entity_type);
+  // Objects being created might not have id/vid yet.
+  $id = isset($entity->{$info['object keys']['id']}) ? $entity->{$info['object keys']['id']} : NULL;
+  $vid = ($info['object keys']['revision'] && isset($entity->{$info['object keys']['revision']})) ? $entity->{$info['object keys']['revision']} : NULL;
+  // If no bundle key provided, then we assume a single bundle, named after the
+  // entity type.
+  $bundle = $info['object keys']['bundle'] ? $entity->{$info['object keys']['bundle']} : $entity_type;
+  $cacheable = $info['cacheable'];
+  return array($id, $vid, $bundle, $cacheable);
+}
+
+/**
+ * Helper function to assemble an object structure with initial ids.
+ *
+ * This function can be seen as reciprocal to entity_extract_ids().
+ *
+ * @param $entity_type
+ *   The entity type; e.g. 'node' or 'user'.
+ * @param $ids
+ *   A numerically indexed array, as returned by entity_extract_ids(),
+ *   containing these elements:
+ *   0: primary id of the entity
+ *   1: revision id of the entity, or NULL if $entity_type is not versioned
+ *   2: bundle name of the entity
+ * @return
+ *   An entity structure, initialized with the ids provided.
+ */
+function entity_create_stub_entity($entity_type, $ids) {
+  $entity = new stdClass();
+  $info = entity_get_info($entity_type);
+  $entity->{$info['object keys']['id']} = $ids[0];
+  if (isset($info['object keys']['revision']) && !is_null($ids[1])) {
+    $entity->{$info['object keys']['revision']} = $ids[1];
+  }
+  if ($info['object keys']['bundle']) {
+    $entity->{$info['object keys']['bundle']} = $ids[2];
+  }
+  return $entity;
 }
 
 /**

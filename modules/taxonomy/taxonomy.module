@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.module,v 1.530 2009-10-24 05:13:44 webchick Exp $
+// $Id: taxonomy.module,v 1.534 2009-11-02 06:34:36 webchick Exp $
 
 /**
  * @file
@@ -892,11 +892,11 @@ function taxonomy_help($path, $arg) {
       $vocabulary = taxonomy_vocabulary_load($arg[3]);
       switch ($vocabulary->hierarchy) {
         case 0:
-          return '<p>' . t('%capital_name is a flat vocabulary. You may organize the terms in the %name vocabulary by using the handles on the left side of the table. To change the name or description of a term, click the <em>edit</em> link next to the term.', array('%capital_name' => drupal_ucfirst($vocabulary->name), '%name' => $vocabulary->name)) . '</p>';
+          return '<p>' . t('You can reorganize the terms in %capital_name using their drag and drop handles, and group terms under a parent term by sliding them under and to the right of the parent.', array('%capital_name' => drupal_ucfirst($vocabulary->name), '%name' => $vocabulary->name)) . '</p>';
         case 1:
-          return '<p>' . t('%capital_name is a single hierarchy vocabulary. You may organize the terms in the %name vocabulary by using the handles on the left side of the table. To change the name or description of a term, click the <em>edit</em> link next to the term.', array('%capital_name' => drupal_ucfirst($vocabulary->name), '%name' => $vocabulary->name)) . '</p>';
+          return '<p>' . t('%capital_name contains terms grouped with parent terms. You can reorganize the terms in %capital_name using their drag and drop handles.', array('%capital_name' => drupal_ucfirst($vocabulary->name), '%name' => $vocabulary->name)) . '</p>';
         case 2:
-          return '<p>' . t('%capital_name is a multiple hierarchy vocabulary. To change the name or description of a term, click the <em>edit</em> link next to the term. Drag and drop of multiple hierarchies is not supported, but you can re-enable drag and drop support by editing each term to include only a single parent.', array('%capital_name' => drupal_ucfirst($vocabulary->name))) . '</p>';
+          return '<p>' . t('%capital_name contains terms with multiple parents. Drag and drop of terms with multiple parents is not supported, but you can re-enable drag and drop support by editing each term to include only a single parent.', array('%capital_name' => drupal_ucfirst($vocabulary->name))) . '</p>';
       }
     case 'admin/structure/taxonomy/add':
       return '<p>' . t('Define how your vocabulary will be presented to administrators and users, and which content types to categorize with it. Tags allows users to create terms when submitting posts by typing a comma separated list. Otherwise terms are chosen from a select list and can only be created by users with the "administer taxonomy" permission.') . '</p>';
@@ -1162,7 +1162,7 @@ function _taxonomy_clean_field_cache($term) {
 
   // Determine object types that are not cacheable.
   $obj_types = array();
-  foreach (field_info_fieldable_types() as $obj_type => $info) {
+  foreach (entity_get_info() as $obj_type => $info) {
     if (isset($info['cacheable']) && !$info['cacheable']) {
       $obj_types[] = $obj_type;
     }
@@ -1211,8 +1211,8 @@ function taxonomy_term_title($term) {
 /**
  * Implement hook_field_widget().
  */
-function taxonomy_field_widget(&$form, &$form_state, $field, $instance, $langcode, $items, $delta = NULL) {
-  $element = array(
+function taxonomy_field_widget(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $element += array(
     '#type' => $instance['widget']['type'],
     '#default_value' => !empty($items) ? $items : array(),
   );
@@ -1500,7 +1500,7 @@ function taxonomy_field_update($obj_type, $object, $field, $instance, $langcode,
 /**
  * Implement hook_node_delete().
  */
-function taxonomy_node_delete($node) {
+function taxonomy_node_delete(stdClass $node) {
   if (variable_get('taxonomy_maintain_index_table', TRUE)) {
     // Clean up the {taxonomy_index} table when nodes are deleted.
     db_delete('taxonomy_index')->condition('nid', $node->nid)->execute();
