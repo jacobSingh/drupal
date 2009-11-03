@@ -1,5 +1,5 @@
 <?php
-// $Id: node.admin.inc,v 1.74 2009-10-27 04:06:44 webchick Exp $
+// $Id: node.admin.inc,v 1.76 2009-11-03 05:27:18 webchick Exp $
 
 /**
  * @file
@@ -73,6 +73,7 @@ function node_filters() {
   $filters['status'] = array(
     'title' => t('status'),
     'options' => array(
+      '[any]' => t('any'),
       'status-1' => t('published'),
       'status-0' => t('not published'),
       'promote-1' => t('promoted'),
@@ -89,16 +90,31 @@ function node_filters() {
     );
   }
 
-  $filters['type'] = array('title' => t('type'), 'options' => node_type_get_names());
+  $filters['type'] = array(
+    'title' => t('type'),
+    'options' => array(
+      '[any]' => t('any'),
+    ) + node_type_get_names(),
+  );
 
   // The taxonomy filter
   if ($taxonomy = module_invoke('taxonomy', 'form_all', 1)) {
-    $filters['term'] = array('title' => t('term'), 'options' => $taxonomy);
+    $filters['term'] = array(
+      'title' => t('term'),
+      'options' => array(
+        '[any]' => t('any'),
+      ) + $taxonomy,
+    );
   }
   // Language filter if there is a list of languages
   if ($languages = module_invoke('locale', 'language_list')) {
     $languages = array('' => t('Language neutral')) + $languages;
-    $filters['language'] = array('title' => t('language'), 'options' => $languages);
+    $filters['language'] = array(
+      'title' => t('language'),
+      'options' => array(
+        '[any]' => t('any'),
+      ) + $languages,
+    );
   }
   return $filters;
 }
@@ -172,10 +188,14 @@ function node_filter_form() {
 
   foreach ($filters as $key => $filter) {
     $names[$key] = $filter['title'];
-    $form['filters']['status'][$key] = array('#type' => 'select', '#options' => $filter['options']);
+    $form['filters']['status'][$key] = array(
+      '#type' => 'select',
+      '#options' => $filter['options'],
+      '#title' => $filter['title'],
+      '#default_value' => '[any]',
+    );
   }
 
-  $form['filters']['filter'] = array('#type' => 'radios', '#options' => $names, '#default_value' => 'status');
   $form['filters']['buttons']['submit'] = array('#type' => 'submit', '#value' => (count($session) ? t('Refine') : t('Filter')));
   if (count($session)) {
     $form['filters']['buttons']['undo'] = array('#type' => 'submit', '#value' => t('Undo'));
@@ -218,14 +238,11 @@ function theme_node_filters($variables) {
       $output .= '<li>' . drupal_render($form['current'][$key]) . '</li>';
     }
   }
+  $output .= '</ul>';
 
-  $output .= '<li><dl class="multiselect">' . (!empty($form['current']) ? '<dt><em>' . t('and') . '</em> ' . t('where') . '</dt>' : '') . '<dd class="a">';
-  foreach (element_children($form['filter']) as $key) {
-    $output .= drupal_render($form['filter'][$key]);
-  }
-  $output .= '</dd>';
+  $output .= '<dl class="multiselect">' . (!empty($form['current']) ? '<dt><em>' . t('and') . '</em> ' . t('where') . '</dt>' : '');
 
-  $output .= '<dt>' . t('is') . '</dt><dd class="b">';
+  $output .= '<dd class="b">';
 
   foreach (element_children($form['status']) as $key) {
     $output .= drupal_render($form['status'][$key]);
@@ -234,7 +251,6 @@ function theme_node_filters($variables) {
 
   $output .= '</dl>';
   $output .= '<div class="container-inline" id="node-admin-buttons">' . drupal_render($form['buttons']) . '</div>';
-  $output .= '</li></ul>';
 
   return $output;
 }
@@ -247,14 +263,15 @@ function node_filter_form_submit($form, &$form_state) {
   switch ($form_state['values']['op']) {
     case t('Filter'):
     case t('Refine'):
-      if (isset($form_state['values']['filter'])) {
-        $filter = $form_state['values']['filter'];
-
-        // Flatten the options array to accommodate hierarchical/nested options.
-        $flat_options = form_options_flatten($filters[$filter]['options']);
-
-        if (isset($flat_options[$form_state['values'][$filter]])) {
-          $_SESSION['node_overview_filter'][] = array($filter, $form_state['values'][$filter]);
+      // Apply every filter that has a choice selected other than 'any'.
+      foreach ($filters as $filter => $options) {
+        if (isset($form_state['values'][$filter]) && $form_state['values'][$filter] != '[any]') {
+          // Flatten the options array to accommodate hierarchical/nested options.
+          $flat_options = form_options_flatten($filters[$filter]['options']);
+          // Only accept valid selections offered on the dropdown, block bad input.
+          if (isset($flat_options[$form_state['values'][$filter]])) {
+            $_SESSION['node_overview_filter'][] = array($filter, $form_state['values'][$filter]);
+          }
         }
       }
       break;
@@ -449,7 +466,15 @@ function node_admin_nodes() {
   foreach ($result as $node) {
     $l_options = empty($node->language) ? array() : array('language' => $languages[$node->language]);
     $options[$node->nid] = array(
-      'title' => l($node->title, 'node/' . $node->nid, $l_options) . ' ' . theme('mark', array('type' => node_mark($node->nid, $node->changed))),
+      'title' => array(
+        'data' => array(
+          '#type' => 'link',
+          '#title' => $node->title,
+          '#href' => 'node/' . $node->nid,
+          '#options' => $l_options,
+          '#suffix' => ' ' . theme('mark', array('type' => node_mark($node->nid, $node->changed))),
+        ),
+      ),
       'type' =>  check_plain(node_type_get_name($node)),
       'author' => theme('username', array('account' => $node)),
       'status' =>  $node->status ? t('published') : t('not published'),
@@ -458,7 +483,14 @@ function node_admin_nodes() {
     if ($multilanguage) {
       $options[$node->nid]['language'] = empty($node->language) ? t('Language neutral') : t($languages[$node->language]->name);
     }
-    $options[$node->nid]['operations'] = l(t('edit'), 'node/' . $node->nid . '/edit', array('query' => $destination));
+    $options[$node->nid]['operations'] = array(
+      'data' => array(
+        '#type' => 'link',
+        '#title' => t('edit'),
+        '#href' => 'node/' . $node->nid . '/edit',
+        '#options' => array('query' => $destination),
+      ),
+    );
   }
   $form['nodes'] = array(
     '#type' => 'tableselect',

@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1159 2009-11-01 21:46:16 webchick Exp $
+// $Id: node.module,v 1.1161 2009-11-03 06:47:22 webchick Exp $
 
 /**
  * @file
@@ -1180,6 +1180,9 @@ function node_build($node, $build_mode = 'full') {
  *
  */
 function node_build_content(stdClass $node, $build_mode = 'full') {
+  // Remove previously built content, if exists.
+  $node->content = array();
+
   // The 'view' hook can be implemented to overwrite the default function
   // to display nodes.
   if (node_hook($node, 'view')) {
@@ -1187,9 +1190,6 @@ function node_build_content(stdClass $node, $build_mode = 'full') {
   }
 
   // Build fields content.
-  if (empty($node->content)) {
-    $node->content = array();
-  };
   $node->content += field_attach_view('node', $node, $build_mode);
 
   // Always display a read more link on teasers because we have no way
@@ -2152,6 +2152,10 @@ function node_page_view(stdClass $node) {
   if (isset($return['nodes'][$node->nid]['title'])) {
     drupal_set_title($return['nodes'][$node->nid]['title']['items'][0]['#item']['value']);
   }
+  // Set the node path as the canonical URL to prevent duplicate content.
+  drupal_add_html_head_link(array('rel' => 'canonical', 'href' => url('node/' . $node->nid)), TRUE);
+  // Set the non-aliased path as a default shortlink.
+  drupal_add_html_head_link(array('rel' => 'shortlink', 'href' => url('node/' . $node->nid, array('alias' => TRUE))), TRUE);
   return $return;
 }
 

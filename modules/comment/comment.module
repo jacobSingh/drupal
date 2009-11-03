@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.798 2009-11-02 01:00:42 webchick Exp $
+// $Id: comment.module,v 1.800 2009-11-03 06:47:22 webchick Exp $
 
 /**
  * @file
@@ -361,9 +361,6 @@ function comment_permalink($comment) {
     // behaves as it would when visiting the page directly.
     $_GET['q'] = 'node/' . $node->nid;
     $_GET['page'] = $page;
-
-    // Set the node path as the canonical URL to prevent duplicate content.
-    drupal_add_link(array('rel' => 'canonical', 'href' => url('node/' . $node->nid)));
 
     // Return the node view, this will show the correct comment in context.
     return menu_execute_active_handler('node/' . $node->nid, FALSE);
@@ -839,9 +836,8 @@ function comment_build($comment, stdClass $node, $build_mode = 'full') {
  *   Build mode, e.g. 'full', 'teaser'...
  */
 function comment_build_content($comment, stdClass $node, $build_mode = 'full') {
-  if (empty($comment->content)) {
-    $comment->content = array();
-  }
+  // Remove previously built content, if exists.
+  $comment->content = array();
 
   // Build comment body.
   $comment->content['comment_body'] = array(

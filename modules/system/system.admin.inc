@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.216 2009-10-19 23:28:40 dries Exp $
+// $Id: system.admin.inc,v 1.219 2009-11-03 05:27:18 webchick Exp $
 
 /**
  * @file
@@ -240,13 +240,8 @@ function system_themes_form() {
     );
     $options[$theme->name] = $theme->info['name'];
 
-    if (drupal_theme_access($theme)) {
-      $form[$theme->name]['operations'] = array('#markup' => l(t('configure'), 'admin/appearance/settings/' . $theme->name) );
-    }
-    else {
-      // Dummy element for drupal_render. Cleaner than adding a check in the theme function.
-      $form[$theme->name]['operations'] = array();
-    }
+    $form[$theme->name]['operations'] = drupal_theme_access($theme) ? array('#type' => 'link', '#title' => t('configure'), '#href' => 'admin/appearance/settings/' . $theme->name) : array();
+
     if (!empty($theme->status)) {
       $status[] = $theme->name;
     }
@@ -2054,10 +2049,6 @@ function system_batch_page() {
   require_once DRUPAL_ROOT . '/includes/batch.inc';
   $output = _batch_page();
 
-  // Use the same theme that the page that started the batch.
-  $batch = &batch_get();
-  $GLOBALS['custom_theme'] = $batch['theme'];
-
   if ($output === FALSE) {
     drupal_access_denied();
   }
@@ -2397,21 +2388,6 @@ function theme_system_modules_uninstall($variables) {
   $output .= drupal_render_children($form);
 
   return $output;
-}
-
-/**
- * Theme function for the system settings form.
- *
- * By default this does not alter the appearance of a form at all,
- * but is provided as a convenience for themers.
- *
- * @param $variables
- *   An associative array containing:
- *   - form: An associative array containing the structure of the form.
- * @ingroup themeable
- */
-function theme_system_settings_form($variables) {
-  return drupal_render_children($variables['form']);
 }
 
 /**
