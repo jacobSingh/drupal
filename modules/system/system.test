@@ -1,5 +1,5 @@
 <?php
-// $Id: system.test,v 1.90 2009-10-23 00:45:51 dries Exp $
+// $Id: system.test,v 1.93 2009-12-02 19:26:22 dries Exp $
 
 /**
  * Helper class for module test cases.
@@ -10,7 +10,7 @@ class ModuleTestCase extends DrupalWebTestCase {
   function setUp() {
     parent::setUp('system_test');
 
-    $this->admin_user = $this->drupalCreateUser(array('access administration pages', 'administer site configuration'));
+    $this->admin_user = $this->drupalCreateUser(array('access administration pages', 'administer modules'));
     $this->drupalLogin($this->admin_user);
   }
 
@@ -530,8 +530,8 @@ class AccessDeniedTestCase extends DrupalWebTestCase {
     $this->assertText(t('Access denied'), t('Found the default 403 page'));
 
     $edit = array(
-      'title' => array(FIELD_LANGUAGE_NONE => array(array('value' => $this->randomName(10)))),
-      'body' => array(FIELD_LANGUAGE_NONE => array(array('value' => $this->randomName(100)))),
+      'title' => array(LANGUAGE_NONE => array(array('value' => $this->randomName(10)))),
+      'body' => array(LANGUAGE_NONE => array(array('value' => $this->randomName(100)))),
     );
     $node = $this->drupalCreateNode($edit);
 
@@ -539,13 +539,13 @@ class AccessDeniedTestCase extends DrupalWebTestCase {
     $this->drupalPost('admin/config/system/site-information', array('site_403' => 'node/' . $node->nid), t('Save configuration'));
 
     $this->drupalGet('admin');
-    $this->assertText($node->title[FIELD_LANGUAGE_NONE][0]['value'], t('Found the custom 403 page'));
+    $this->assertText($node->title[LANGUAGE_NONE][0]['value'], t('Found the custom 403 page'));
 
     // Logout and check that the user login block is shown on custom 403 pages.
     $this->drupalLogout();
 
     $this->drupalGet('admin');
-    $this->assertText($node->title[FIELD_LANGUAGE_NONE][0]['value'], t('Found the custom 403 page'));
+    $this->assertText($node->title[LANGUAGE_NONE][0]['value'], t('Found the custom 403 page'));
     $this->assertText(t('User login'), t('Blocks are shown on the custom 403 page'));
 
     // Log back in and remove the custom 403 page.
@@ -607,8 +607,8 @@ class PageNotFoundTestCase extends DrupalWebTestCase {
     $this->assertText(t('Page not found'), t('Found the default 404 page'));
 
     $edit = array(
-      'title' => array(FIELD_LANGUAGE_NONE => array(array('value' => $this->randomName(10)))),
-      'body' => array(FIELD_LANGUAGE_NONE => array(array('value' => $this->randomName(100)))),
+      'title' => array(LANGUAGE_NONE => array(array('value' => $this->randomName(10)))),
+      'body' => array(LANGUAGE_NONE => array(array('value' => $this->randomName(100)))),
     );
     $node = $this->drupalCreateNode($edit);
 
@@ -616,7 +616,7 @@ class PageNotFoundTestCase extends DrupalWebTestCase {
     $this->drupalPost('admin/config/system/site-information', array('site_404' => 'node/' . $node->nid), t('Save configuration'));
 
     $this->drupalGet($this->randomName(10));
-    $this->assertText($node->title[FIELD_LANGUAGE_NONE][0]['value'], t('Found the custom 404 page'));
+    $this->assertText($node->title[LANGUAGE_NONE][0]['value'], t('Found the custom 404 page'));
   }
 }
 
@@ -880,7 +880,7 @@ class PageTitleFiltering extends DrupalWebTestCase {
     drupal_set_title($title, PASS_THROUGH);
     $this->assertTrue(strpos(drupal_get_title(), '<em>') !== FALSE, t('Tags in title are not converted to entities when $output is PASS_THROUGH.'));
     // Generate node content.
-    $langcode = FIELD_LANGUAGE_NONE;
+    $langcode = LANGUAGE_NONE;
     $edit = array(
      "title[$langcode][0][value]" => '!SimpleTest! ' . $title . $this->randomName(20),
      "body[$langcode][0][value]" => '!SimpleTest! test body' . $this->randomName(200),
@@ -1023,6 +1023,7 @@ class SystemMainContentFallback extends DrupalWebTestCase {
     $this->admin_user = $this->drupalCreateUser(array(
       'access administration pages',
       'administer site configuration',
+      'administer modules',
       'administer blocks',
       'administer nodes',
     ));
@@ -1050,7 +1051,7 @@ class SystemMainContentFallback extends DrupalWebTestCase {
 
     // At this point, no region is filled and fallback should be triggered.
     $this->drupalGet('admin/config/system/site-information');
-    $this->assertField('site_name', t('Admin interface still availble.'));
+    $this->assertField('site_name', t('Admin interface still available.'));
 
     // Fallback should not trigger when another module is handling content.
     $this->drupalGet('system-test/main-content-handling');
@@ -1071,7 +1072,7 @@ class SystemMainContentFallback extends DrupalWebTestCase {
     // Request a user* page and see if it is displayed.
     $this->drupalLogin($this->web_user);
     $this->drupalGet('user/' . $this->web_user->uid . '/edit');
-    $this->assertField('mail', t('User interface still availble.'));
+    $this->assertField('mail', t('User interface still available.'));
 
     // Enable the block module again.
     $this->drupalLogin($this->admin_user);
@@ -1176,7 +1177,7 @@ class SystemThemeFunctionalTest extends DrupalWebTestCase {
   function setUp() {
     parent::setUp();
 
-    $this->admin_user = $this->drupalCreateUser(array('access administration pages', 'administer site configuration', 'bypass node access'));
+    $this->admin_user = $this->drupalCreateUser(array('access administration pages', 'administer themes', 'bypass node access'));
     $this->drupalLogin($this->admin_user);
     $this->node = $this->drupalCreateNode();
   }
@@ -1185,9 +1186,10 @@ class SystemThemeFunctionalTest extends DrupalWebTestCase {
    * Test the administration theme functionality.
    */
   function testAdministrationTheme() {
+    theme_enable(array('stark'));
+    variable_set('theme_default', 'stark');
     // Enable an administration theme and show it on the node admin pages.
     $edit = array(
-      'theme_default' => 'stark',
       'admin_theme' => 'garland',
       'node_admin_theme' => TRUE,
     );
@@ -1218,8 +1220,8 @@ class SystemThemeFunctionalTest extends DrupalWebTestCase {
     $this->assertRaw('themes/stark', t('Site default theme used on the add content page.'));
 
     // Reset to the default theme settings.
+    variable_set('theme_default', 'garland');
     $edit = array(
-      'theme_default' => 'garland',
       'admin_theme' => '0',
       'node_admin_theme' => FALSE,
     );
@@ -1344,7 +1346,7 @@ class TokenReplaceTestCase extends DrupalWebTestCase {
     // Create the initial objects.
     $account = $this->drupalCreateUser();
     $node = $this->drupalCreateNode(array('uid' => $account->uid));
-    $node->title = array(FIELD_LANGUAGE_NONE => array(array('value' => '<blink>Blinking Text</blink>')));
+    $node->title = array(LANGUAGE_NONE => array(array('value' => '<blink>Blinking Text</blink>')));
     global $user, $language;
 
     $source  = '[node:title]';         // Title of the node we passed in
@@ -1355,7 +1357,7 @@ class TokenReplaceTestCase extends DrupalWebTestCase {
     $source .= '[date:short]';         // Short date format of REQUEST_TIME
     $source .= '[bogus:token]';        // Nonexistent token, should be untouched
 
-    $target  = check_plain($node->title[FIELD_LANGUAGE_NONE][0]['value']);
+    $target  = check_plain($node->title[LANGUAGE_NONE][0]['value']);
     $target .= check_plain($account->name);
     $target .= format_interval(REQUEST_TIME - $node->created, 2, $language->language);
     $target .= check_plain($user->name);
@@ -1373,10 +1375,10 @@ class TokenReplaceTestCase extends DrupalWebTestCase {
 
     $raw_tokens = array('title' => '[node:title]');
     $generated = token_generate('node', $raw_tokens, array('node' => $node));
-    $this->assertFalse(strcmp($generated['[node:title]'], check_plain($node->title[FIELD_LANGUAGE_NONE][0]['value'])), t('Token sanitized.'));
+    $this->assertFalse(strcmp($generated['[node:title]'], check_plain($node->title[LANGUAGE_NONE][0]['value'])), t('Token sanitized.'));
 
     $generated = token_generate('node', $raw_tokens, array('node' => $node), array('sanitize' => FALSE));
-    $this->assertFalse(strcmp($generated['[node:title]'], $node->title[FIELD_LANGUAGE_NONE][0]['value']), t('Unsanitized token generated properly.'));
+    $this->assertFalse(strcmp($generated['[node:title]'], $node->title[LANGUAGE_NONE][0]['value']), t('Unsanitized token generated properly.'));
   }
 }
 

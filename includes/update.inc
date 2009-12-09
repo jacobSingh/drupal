@@ -1,5 +1,5 @@
 <?php
-// $Id: update.inc,v 1.18 2009-10-24 23:19:21 webchick Exp $
+// $Id: update.inc,v 1.22 2009-11-10 22:06:09 dries Exp $
 
 /**
  * @file
@@ -22,10 +22,10 @@ function update_fix_compatibility() {
     }
   }
   if (!empty($incompatible)) {
-  	db_update('system')
-  	  ->fields(array('status' => 0))
-  	  ->condition('name', $incompatible, 'IN')
-  	  ->execute();
+    db_update('system')
+      ->fields(array('status' => 0))
+      ->condition('name', $incompatible, 'IN')
+      ->execute();
   }
 }
 
@@ -140,6 +140,8 @@ function update_fix_d7_requirements() {
       'not null' => TRUE,
       'default' => 0,
     ));
+    db_drop_index('menu_router', 'tab_parent');
+    db_add_index('menu_router', 'tab_parent', array(array('tab_parent', 64), 'weight', 'title'));
     db_add_field('menu_router', 'theme_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
     db_add_field('menu_router', 'theme_arguments', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
 
@@ -283,6 +285,10 @@ function update_fix_d7_requirements() {
     db_create_table('date_format_type', $schema['date_format_type']);
     db_create_table('date_formats', $schema['date_formats']);
     db_create_table('date_format_locale', $schema['date_format_locale']);
+
+    $schema['cache_bootstrap'] = $schema['cache'];
+    $schema['cache_bootstrap']['description'] = 'Cache table for data required to bootstrap Drupal, may be routed to a shared memory cache.';
+    db_create_table('cache_bootstrap', $schema['cache_bootstrap']);
 
     // Add column for locale context.
     if (db_table_exists('locales_source')) {
@@ -450,12 +456,6 @@ function update_do_one($module, $number, &$context) {
       }
       $ret['results']['query'] = $function($context['sandbox']);
       $ret['results']['success'] = TRUE;
-
-      // @TODO Remove this block after all updates have been converted to
-      // return only strings.
-      if (is_array($ret['results']['query'])) {
-        $ret = $ret['results']['query'];
-      }
     }
     // @TODO We may want to do different error handling for different exception
     // types, but for now we'll just print the message.
@@ -466,13 +466,6 @@ function update_do_one($module, $number, &$context) {
     if ($context['log']) {
       $ret['queries'] = Database::getLog($function);
     }
-  }
-
-  // @TODO Remove this block after all updates have been converted to return
-  // only strings.
-  if (isset($ret['#finished'])) {
-    $context['finished'] = $ret['#finished'];
-    unset($ret['#finished']);
   }
 
   if (isset($context['sandbox']['#finished'])) {

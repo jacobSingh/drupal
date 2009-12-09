@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.415 2009-10-24 23:19:21 webchick Exp $
+// $Id: system.install,v 1.429 2009-12-04 16:49:47 dries Exp $
 
 /**
  * @file
@@ -332,7 +332,7 @@ function system_requirements($phase) {
 }
 
 /**
- * Implement hook_install().
+ * Implements hook_install().
  */
 function system_install() {
   // Create tables.
@@ -417,120 +417,13 @@ function system_install() {
     ))
     ->execute();
 
-  // Add text formats.
-  $filtered_html_format = db_insert('filter_format')
-    ->fields(array(
-      'name' => 'Filtered HTML',
-      'cache' => 1,
-      'weight' => 0,
-    ))
-    ->execute();
-  $full_html_format = db_insert('filter_format')
-    ->fields(array(
-      'name' => 'Full HTML',
-      'cache' => 1,
-      'weight' => 0,
-    ))
-    ->execute();
-  $plain_text_format = db_insert('filter_format')
-    ->fields(array(
-      'name' => 'Plain text',
-      'cache' => 1,
-      'weight' => 1,
-    ))
-    ->execute();
-
-  // Enable filters for each text format.
-
-  // Filtered HTML:
-  db_insert('filter')
-    ->fields(array('format', 'module', 'name', 'weight', 'status'))
-    // URL filter.
-    ->values(array(
-      'format' => $filtered_html_format,
-      'module' => 'filter',
-      'name' => 'filter_url',
-      'weight' => 0,
-      'status' => 1,
-    ))
-    // HTML filter.
-    ->values(array(
-      'format' => $filtered_html_format,
-      'module' => 'filter',
-      'name' => 'filter_html',
-      'weight' => 1,
-      'status' => 1,
-    ))
-    // Line break filter.
-    ->values(array(
-      'format' => $filtered_html_format,
-      'module' => 'filter',
-      'name' => 'filter_autop',
-      'weight' => 2,
-      'status' => 1,
-    ))
-    // HTML corrector filter.
-    ->values(array(
-      'format' => $filtered_html_format,
-      'module' => 'filter',
-      'name' => 'filter_htmlcorrector',
-      'weight' => 10,
-      'status' => 1,
-    ))
-  // Full HTML:
-    // URL filter.
-    ->values(array(
-      'format' => $full_html_format,
-      'module' => 'filter',
-      'name' => 'filter_url',
-      'weight' => 0,
-      'status' => 1,
-    ))
-    // Line break filter.
-    ->values(array(
-      'format' => $full_html_format,
-      'module' => 'filter',
-      'name' => 'filter_autop',
-      'weight' => 1,
-      'status' => 1,
-    ))
-    // HTML corrector filter.
-    ->values(array(
-      'format' => $full_html_format,
-      'module' => 'filter',
-      'name' => 'filter_htmlcorrector',
-      'weight' => 10,
-      'status' => 1,
-    ))
-  // Plain text:
-    // Escape all HTML.
-    ->values(array(
-      'format' => $plain_text_format,
-      'module' => 'filter',
-      'name' => 'filter_html_escape',
-      'weight' => 0,
-      'status' => 1,
-    ))
-    // Line break filter.
-    ->values(array(
-      'format' => $plain_text_format,
-      'module' => 'filter',
-      'name' => 'filter_autop',
-      'weight' => 1,
-      'status' => 1,
-    ))
-    ->execute();
-
-  // Set the fallback format to plain text.
-  variable_set('filter_fallback_format', $plain_text_format);
-
   $cron_key = md5(mt_rand());
 
   variable_set('cron_key', $cron_key);
 }
 
 /**
- * Implement hook_schema().
+ * Implements hook_schema().
  */
 function system_schema() {
   // NOTE: {variable} needs to be created before all other tables, as
@@ -701,6 +594,8 @@ function system_schema() {
     'primary key' => array('cid'),
   );
 
+  $schema['cache_bootstrap'] = $schema['cache'];
+  $schema['cache_bootstrap']['description'] = 'Cache table for data required to bootstrap Drupal, may be routed to a shared memory cache.';
   $schema['cache_form'] = $schema['cache'];
   $schema['cache_form']['description'] = 'Cache table for the form system to store recently built forms and their storage data, to be used in subsequent page requests.';
   $schema['cache_page'] = $schema['cache'];
@@ -709,8 +604,6 @@ function system_schema() {
   $schema['cache_menu']['description'] = 'Cache table for the menu system to store router information as well as generated link trees for various menu/page/user combinations.';
   $schema['cache_path'] = $schema['cache'];
   $schema['cache_path']['description'] = 'Cache table for path alias lookup.';
-  $schema['cache_registry'] = $schema['cache'];
-  $schema['cache_registry']['description'] = 'Cache table for the code registry system to remember what code files need to be loaded on any given page.';
 
   $schema['date_format_type'] = array(
     'description' => 'Stores configured date format types.',
@@ -738,7 +631,7 @@ function system_schema() {
     'primary key' => array('type'),
   );
 
-  // This table's name is plural as some versions of MySQL can't create a 
+  // This table's name is plural as some versions of MySQL can't create a
   // table named 'date_format'.
   $schema['date_formats'] = array(
     'description' => 'Stores configured date formats.',
@@ -1097,7 +990,7 @@ function system_schema() {
     ),
     'indexes' => array(
       'fit' => array('fit'),
-      'tab_parent' => array('tab_parent'),
+      'tab_parent' => array(array('tab_parent', 64), 'weight', 'title'),
       'tab_root_weight_title' => array(array('tab_root', 64), 'weight', 'title'),
     ),
     'primary key' => array('path'),
@@ -1567,8 +1460,8 @@ function system_schema() {
     ),
     'primary key' => array('filename'),
     'indexes' => array(
-      'modules' => array('type', 'status', 'weight', 'name'),
-      'bootstrap' => array('type', 'status', 'bootstrap', 'weight', 'name'),
+      'bootstrap' => array('status', 'bootstrap', 'type', 'weight', 'name'),
+      'system_list' => array('weight', 'name'),
       'type_name' => array('type', 'name'),
     ),
   );
@@ -1631,37 +1524,29 @@ function system_update_last_removed() {
 * Increase the size of the 'load_functions' and 'to_arg_functions' fields in table 'menu_router'.
 */
 function system_update_6048() {
-  $ret = array();
-  db_change_field($ret, 'menu_router', 'load_functions', 'load_functions', array('type' => 'text', 'not null' => TRUE,));
-  db_change_field($ret, 'menu_router', 'to_arg_functions', 'to_arg_functions', array('type' => 'text', 'not null' => TRUE,));
-
-  return $ret;
+  db_change_field('menu_router', 'load_functions', 'load_functions', array('type' => 'text', 'not null' => TRUE,));
+  db_change_field('menu_router', 'to_arg_functions', 'to_arg_functions', array('type' => 'text', 'not null' => TRUE,));
 }
 
 /**
  * Replace src index on the {url_alias} table with src, language.
  */
 function system_update_6049() {
-  $ret = array();
-  db_drop_index($ret, 'url_alias', 'src');
-  db_add_index($ret, 'url_alias', 'src_language', array('src', 'language'));
-  return $ret;
+  db_drop_index('url_alias', 'src');
+  db_add_index('url_alias', 'src_language', array('src', 'language'));
 }
 
 /**
  * Clear any menu router blobs stored in the cache table.
  */
 function system_update_6050() {
-  $ret = array();
   cache_clear_all('router:', 'cache_menu', TRUE);
-  return $ret;
 }
 
 /**
  * Create a signature_format column.
  */
 function system_update_6051() {
-  $ret = array();
 
   if (!db_column_exists('users', 'signature_format')) {
 
@@ -1681,7 +1566,11 @@ function system_update_6051() {
 
     // Set the format of existing signatures to the current default input format.
     if ($current_default_filter = variable_get('filter_default_format', 0)) {
-      $ret[] = update_sql("UPDATE {users} SET signature_format = ". $current_default_filter);
+      db_update('users')
+        ->fields(array(
+          'signature_format' => $current_default_filter,
+        ))
+        ->execute();
     }
 
     drupal_set_message("User signatures no longer inherit comment input formats. Each user's signature now has its own associated format that can be selected on the user's account page. Existing signatures have been set to your site's default input format.");
@@ -1737,10 +1626,10 @@ function system_update_7000() {
     $renamed_permission = preg_replace('/(?<=^|,\ )edit\ own\ forum\ topics(?=,|$)/', 'edit own forum content', $role->perm);
 
     if ($renamed_permission != $role->perm) {
-    	db_update('permission')
-    	  ->fields(array('perm' => $renamed_permission))
-    	  ->condition('rid', $role->rid)
-    	  ->execute();
+      db_update('permission')
+        ->fields(array('perm' => $renamed_permission))
+        ->condition('rid', $role->rid)
+        ->execute();
     }
   }
 }
@@ -1786,7 +1675,7 @@ function system_update_7002() {
  * Update {blocked_ips} with valid IP addresses from {access}.
  */
 function system_update_7003() {
-	$messages = array();
+  $messages = array();
   $type = 'host';
   $result = db_query("SELECT mask FROM {access} WHERE status = :status AND type = :type", array(
     ':status' => 0,
@@ -1794,9 +1683,9 @@ function system_update_7003() {
   ));
   foreach ($result as $blocked) {
     if (filter_var($blocked->mask, FILTER_VALIDATE_IP, FILTER_FLAG_NO_RES_RANGE) !== FALSE) {
-    	db_insert('blocked_ips')
-    	  ->fields(array('ip' => $blocked->mask))
-    	  ->execute();
+      db_insert('blocked_ips')
+        ->fields(array('ip' => $blocked->mask))
+        ->execute();
     }
     else {
       $invalid_host = check_plain($blocked->mask);
@@ -1865,11 +1754,11 @@ function system_update_7004(&$sandbox) {
           ))
           ->fetchField();
           if ($block_exists) {
-          	db_update($table)
-          	  ->fields(array('delta' => $new_delta))
-          	  ->condition('module', $module)
-          	  ->condition('delta', $old_delta)
-          	  ->execute();
+            db_update($table)
+              ->fields(array('delta' => $new_delta))
+              ->condition('module', $module)
+              ->condition('delta', $old_delta)
+              ->execute();
           }
         }
       }
@@ -1967,19 +1856,6 @@ function system_update_7006() {
     ),
     'primary key' => array('filename'),
   );
-  $schema['cache_registry'] = array(
-    'fields' => array(
-      'cid'        => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
-      'data'       => array('type' => 'blob', 'not null' => FALSE, 'size' => 'big'),
-      'expire'     => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
-      'created'    => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
-      'headers'    => array('type' => 'text', 'not null' => FALSE),
-      'serialized' => array('type' => 'int', 'size' => 'small', 'not null' => TRUE, 'default' => 0)
-    ),
-    'indexes' => array('expire' => array('expire')),
-    'primary key' => array('cid'),
-  );
-  db_create_table('cache_registry', $schema['cache_registry']);
   db_create_table('registry', $schema['registry']);
   db_create_table('registry_file', $schema['registry_file']);
   registry_rebuild();
@@ -2035,10 +1911,10 @@ function system_update_7008() {
  *
  */
 function system_update_7009() {
-	db_update('variable')
-	  ->fields(array('name' => 'main_menu_links_source'))
-	  ->condition('name', 'menu_primary_links_source')
-	  ->execute();
+  db_update('variable')
+    ->fields(array('name' => 'main_menu_links_source'))
+    ->condition('name', 'menu_primary_links_source')
+    ->execute();
 }
 
 /**
@@ -2196,14 +2072,14 @@ function system_update_7017() {
 }
 
 /**
- * Shorten the {system}.type column and add an index on type and name.
+ * Shorten the {system}.type column and modify indexes.
  */
 function system_update_7018() {
   db_drop_index('system', 'modules');
   db_drop_index('system', 'type_name');
   db_change_field('system', 'type', 'type', array('type' => 'varchar', 'length' => 12, 'not null' => TRUE, 'default' => ''));
-  db_add_index('system', 'modules', array('type', 'status', 'weight', 'name'));
   db_add_index('system', 'type_name', array('type', 'name'));
+  db_add_index('system', 'system_list', array('weight', 'name'));
 }
 
 /**
@@ -2428,10 +2304,10 @@ function system_update_7022() {
  * Change the PHP for settings permission.
  */
 function system_update_7023() {
-	db_update('role_permission')
-	  ->fields(array('permission' => 'use PHP for settings'))
-	  ->condition('permission', 'use PHP for block visibility')
-	  ->execute();
+  db_update('role_permission')
+    ->fields(array('permission' => 'use PHP for settings'))
+    ->condition('permission', 'use PHP for block visibility')
+    ->execute();
 }
 
 /**
@@ -2508,10 +2384,9 @@ function system_update_7029() {
 }
 
 /**
- * Add an index to node_comment_statistics on comment_count.
+ * Moved to comment_update_7011().
  */
 function system_update_7030() {
-  db_add_index('node_comment_statistics', 'comment_count', array('comment_count'));
 }
 
 /**
@@ -2781,6 +2656,63 @@ function system_update_7044() {
 function system_update_7045() {
   db_add_field('flood', 'expiration', array('description' => 'Expiration timestamp. Expired events are purged on cron run.', 'type' => 'int', 'not null' => TRUE, 'default' => 0));
   db_add_index('flood', 'purge', array('expiration'));
+}
+
+/**
+ * Switch from the Minnelli theme if it is the default or admin theme.
+ */
+function system_update_7046() {
+  if (variable_get('theme_default') == 'minnelli' || variable_get('admin_theme') == 'minnelli') {
+    // Make sure Garland is enabled.
+    db_update('system')
+      ->fields(array('status' => 1))
+      ->condition('type', 'theme')
+      ->condition('name', 'garland')
+      ->execute();
+    if (variable_get('theme_default') != 'garland') {
+      // If the default theme isn't Garland, transfer all of Minnelli's old
+      // settings to Garland.
+      $settings = variable_get('theme_minnelli_settings', array());
+      // Set the theme setting width to "fixed" to match Minnelli's old layout.
+      $settings['garland_width'] = 'fixed';
+      variable_set('theme_garland_settings', $settings);
+      // Remove Garland's color files since they won't match Minnelli's.
+      foreach (variable_get('color_garland_files', array()) as $file) {
+        @unlink($file);
+      }
+      if (isset($file) && $file = dirname($file)) {
+        @rmdir($file);
+      }
+      variable_del('color_garland_palette');
+      variable_del('color_garland_stylesheets');
+      variable_del('color_garland_logo');
+      variable_del('color_garland_files');
+      variable_del('color_garland_screenshot');
+    }
+    if (variable_get('theme_default') == 'minnelli') {
+      variable_set('theme_default', 'garland');
+    }
+    if (variable_get('admin_theme') == 'minnelli') {
+      variable_set('admin_theme', 'garland');
+    }
+  }
+}
+
+/**
+ * Normalize the front page path variable.
+ */
+function system_update_7047() {
+  variable_set('site_frontpage', drupal_get_normal_path(variable_get('site_frontpage', 'node')));
+}
+
+/**
+ * Convert path languages from the empty string to LANGUAGE_NONE.
+ */
+function system_update_7048() {
+  db_update('url_alias')
+    ->fields(array('language' => LANGUAGE_NONE))
+    ->condition('language', '')
+    ->execute();
 }
 
 /**

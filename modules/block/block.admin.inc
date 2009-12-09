@@ -1,5 +1,5 @@
 <?php
-// $Id: block.admin.inc,v 1.61 2009-11-03 05:27:18 webchick Exp $
+// $Id: block.admin.inc,v 1.64 2009-12-02 19:39:05 dries Exp $
 
 /**
  * @file
@@ -114,6 +114,8 @@ function block_admin_display_form($form, &$form_state, $blocks, $theme) {
  * Process main blocks administration form submissions.
  */
 function block_admin_display_form_submit($form, &$form_state) {
+  $txn = db_transaction();
+
   foreach ($form_state['values'] as $block) {
     $block['status'] = (int) ($block['region'] != BLOCK_REGION_NONE);
     $block['region'] = $block['status'] ? $block['region'] : '';
@@ -176,7 +178,8 @@ function _block_compare($a, $b) {
 /**
  * Menu callback; displays the block configuration form.
  */
-function block_admin_configure($form, &$form_state, $block) {
+function block_admin_configure($form, &$form_state, $module, $delta) {
+  $block = block_load($module, $delta);
   $form['module'] = array(
     '#type' => 'value',
     '#value' => $block->module,
@@ -364,6 +367,8 @@ function block_admin_configure_validate($form, &$form_state) {
 
 function block_admin_configure_submit($form, &$form_state) {
   if (!form_get_errors()) {
+    $txn = db_transaction();
+
     db_update('block')
       ->fields(array(
         'visibility' => (int) $form_state['values']['visibility'],
@@ -408,7 +413,7 @@ function block_admin_configure_submit($form, &$form_state) {
       db_merge('block')
         ->key(array('theme' => $theme, 'delta' => $form_state['values']['delta'], 'module' => $form_state['values']['module']))
         ->fields(array(
-          'region' => $region,
+          'region' => ($region == BLOCK_REGION_NONE ? '' : $region),
           'pages' => trim($form_state['values']['pages']),
           'status' => (int) ($region != BLOCK_REGION_NONE),
         ))
@@ -426,10 +431,7 @@ function block_admin_configure_submit($form, &$form_state) {
  * Menu callback: display the custom block addition form.
  */
 function block_add_block_form($form, &$form_state) {
-  $block = new stdClass;
-  $block->module = 'block';
-  $block->delta = NULL;
-  return block_admin_configure($form, $form_state, $block);
+  return block_admin_configure($form, $form_state, 'block', NULL);
 }
 
 function block_add_block_form_validate($form, &$form_state) {
@@ -496,7 +498,7 @@ function block_add_block_form_submit($form, &$form_state) {
     db_merge('block')
       ->key(array('theme' => $theme, 'delta' => $delta, 'module' => $form_state['values']['module']))
       ->fields(array(
-        'region' => $region,
+        'region' => ($region == BLOCK_REGION_NONE ? '' : $region),
         'pages' => trim($form_state['values']['pages']),
         'status' => (int) ($region != BLOCK_REGION_NONE),
       ))
@@ -511,7 +513,8 @@ function block_add_block_form_submit($form, &$form_state) {
 /**
  * Menu callback; confirm deletion of custom blocks.
  */
-function block_custom_block_delete($form, &$form_state, $block) {
+function block_custom_block_delete($form, &$form_state, $module, $delta) {
+  $block = block_load($module, $delta);
   $custom_block = block_custom_block_get($block->delta);
   $form['info'] = array('#type' => 'hidden', '#value' => $custom_block['info'] ? $custom_block['info'] : $custom_block['title']);
   $form['bid'] = array('#type' => 'hidden', '#value' => $block->delta);

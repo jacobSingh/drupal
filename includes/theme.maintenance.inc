@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.maintenance.inc,v 1.44 2009-10-27 19:29:12 webchick Exp $
+// $Id: theme.maintenance.inc,v 1.48 2009-12-01 15:57:40 webchick Exp $
 
 /**
  * @file
@@ -10,9 +10,9 @@
  * Sets up the theming system for site installs, updates and when the site is
  * in maintenance mode. It also applies when the database is unavailable.
  *
- * Minnelli is always used for the initial install and update operations. In
- * other cases, "settings.php" must have a "maintenance_theme" key set for the
- * $conf variable in order to change the maintenance theme.
+ * Seven is always used for the initial install and update operations. In
+ * other cases, Minnelli is used, but this can be overridden by setting a
+ * "maintenance_theme" key in the $conf variable in settings.php.
  */
 function _drupal_maintenance_theme() {
   global $theme, $theme_key;
@@ -33,20 +33,18 @@ function _drupal_maintenance_theme() {
 
   // Install and update pages are treated differently to prevent theming overrides.
   if (defined('MAINTENANCE_MODE') && (MAINTENANCE_MODE == 'install' || MAINTENANCE_MODE == 'update')) {
-    $custom_theme = 'minnelli';
+    $custom_theme = 'seven';
   }
   else {
     if (!db_is_active()) {
       // Because we are operating in a crippled environment, we need to
       // bootstrap just enough to allow hook invocations to work.
       $module_list['system']['filename'] = 'modules/system/system.module';
-      $module_list['filter']['filename'] = 'modules/filter/filter.module';
       module_list(TRUE, FALSE, FALSE, $module_list);
       drupal_load('module', 'system');
-      drupal_load('module', 'filter');
     }
 
-    $custom_theme = variable_get('maintenance_theme', 'minnelli');
+    $custom_theme = variable_get('maintenance_theme', 'garland');
   }
 
   $themes = list_themes();
@@ -165,9 +163,9 @@ function theme_install_page($variables) {
   // fix path_to_theme() for the template, to point at the actual
   // theme rather than system module as owner of the hook.
   global $theme_path;
-  $theme_path = 'themes/garland';
+  $theme_path = 'themes/seven';
 
-  return theme_render_template('themes/garland/maintenance-page.tpl.php', $variables);
+  return theme_render_template('themes/seven/maintenance-page.tpl.php', $variables);
 }
 
 /**
@@ -203,9 +201,9 @@ function theme_update_page($variables) {
   // fix path_to_theme() for the template, to point at the actual
   // theme rather than system module as owner of the hook.
   global $theme_path;
-  $theme_path = 'themes/garland';
+  $theme_path = 'themes/seven';
 
-  return theme_render_template('themes/garland/maintenance-page.tpl.php', $variables);
+  return theme_render_template('themes/seven/maintenance-page.tpl.php', $variables);
 }
 
 /**

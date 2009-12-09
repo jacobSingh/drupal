@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1040 2009-11-03 06:47:22 webchick Exp $
+// $Id: common.inc,v 1.1057 2009-12-05 14:49:55 dries Exp $
 
 /**
  * @file
@@ -2275,7 +2275,11 @@ function format_interval($timestamp, $granularity = 2, $langcode = NULL) {
  *   A translated date string in the requested format.
  */
 function format_date($timestamp, $type = 'medium', $format = '', $timezone = NULL, $langcode = NULL) {
-  $timezones = &drupal_static(__FUNCTION__, array());
+  // Use the advanced drupal_static() pattern, since this is called very often.
+  static $drupal_static = array();
+  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
+  $timezones = &$drupal_static[__FUNCTION__];
+
   if (!isset($timezone)) {
     global $user;
     if (variable_get('configurable_timezones', 1) && $user->uid && $user->timezone) {
@@ -2512,7 +2516,10 @@ function url($path = NULL, array $options = array()) {
   }
 
   global $base_url, $base_secure_url, $base_insecure_url;
-  $script = &drupal_static(__FUNCTION__);
+  // Use the advanced drupal_static() pattern, since this is called very often.
+  static $drupal_static = array();
+  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
+  $script = &$drupal_static[__FUNCTION__];
 
   if (!isset($script)) {
     // On some web servers, such as IIS, we can't omit "index.php". So, we
@@ -2683,6 +2690,7 @@ function drupal_attributes(array $attributes = array()) {
  */
 function l($text, $path, array $options = array()) {
   global $language_url;
+  static $use_theme = NULL;
 
   // Merge in defaults.
   $options += array(
@@ -2702,6 +2710,35 @@ function l($text, $path, array $options = array()) {
     $options['attributes']['title'] = strip_tags($options['attributes']['title']);
   }
 
+  // Determine if rendering of the link is to be done with a theme function
+  // or the inline default. Inline is faster, but if the theme system has been
+  // loaded and a module or theme implements a preprocess or process function
+  // or overrides the theme_link() function, then invoke theme(). Preliminary
+  // benchmarks indicate that invoking theme() can slow down the l() function
+  // by 20% or more, and that some of the link-heavy Drupal pages spend more
+  // than 10% of the total page request time in the l() function.
+  if (!isset($use_theme) && function_exists('theme')) {
+    // Allow edge cases to prevent theme initialization and force inline link
+    // rendering.
+    if (variable_get('theme_link', TRUE)) {
+      drupal_theme_initialize();
+      $registry = theme_get_registry();
+      // We don't want to duplicate functionality that's in theme(), so any
+      // hint of a module or theme doing anything at all special with the 'link'
+      // theme hook should simply result in theme() being called. This includes
+      // the overriding of theme_link() with an alternate function or template,
+      // the presence of preprocess or process functions, or the presence of
+      // include files.
+      $use_theme = !isset($registry['link']['function']) || ($registry['link']['function'] != 'theme_link');
+      $use_theme = $use_theme || !empty($registry['link']['preprocess functions']) || !empty($registry['link']['process functions']) || !empty($registry['link']['includes']);
+    }
+    else {
+      $use_theme = FALSE;
+    }
+  }
+  if ($use_theme) {
+    return theme('link', array('text' => $text, 'path' => $path, 'options' => $options));
+  }
   return '<a href="' . check_plain(url($path, $options)) . '"' . drupal_attributes($options['attributes']) . '>' . ($options['html'] ? $text : check_plain($text)) . '</a>';
 }
 
@@ -2800,6 +2837,14 @@ function drupal_deliver_page($page_callback_result, $default_delivery_callback =
  * @see drupal_deliver_page
  */
 function drupal_deliver_html_page($page_callback_result) {
+  // Emit the correct charset HTTP header, but not if the page callback
+  // result is NULL, since that likely indicates that it printed something
+  // in which case, no further headers may be sent, and not if code running
+  // for this page request has already set the content type header.
+  if (isset($page_callback_result) && is_null(drupal_get_http_header('Content-Type'))) {
+    drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
+  }
+
   // Menu status constants are integers; page content is a string or array.
   if (is_int($page_callback_result)) {
     // @todo: Break these up into separate functions?
@@ -3435,9 +3480,13 @@ function drupal_load_stylesheet_content($contents, $optimize = FALSE) {
 
   if ($optimize) {
     // Perform some safe CSS optimizations.
+    $contents = preg_replace('{
+      (?<=\\\\\*/)([^/\*]+/\*)([^\*/]+\*/)  # Add a backslash also at the end ie-mac hack comment, so the next pass will not touch it.
+                                            # The added backshlash does not affect the effectiveness of the hack.
+      }x', '\1\\\\\2', $contents);    
     $contents = preg_replace('<
-      \s*([@{}:;,]|\)\s|\s\()\s* |  # Remove whitespace around separators, but keep space around parentheses.
-      /\*([^*\\\\]|\*(?!/))+\*/     # Remove comments that are not CSS hacks.
+      \s*([@{}:;,]|\)\s|\s\()\s* |          # Remove whitespace around separators, but keep space around parentheses.
+      /\*[^*\\\\]*\*+([^/*][^*]*\*+)*/ |    # Remove comments that are not CSS hacks.
       >x', '\1', $contents);
   }
 
@@ -3547,6 +3596,28 @@ function drupal_html_id($id) {
   }
 
   return $id;
+}
+
+/**
+ * Provides a standard HTML class name that identifies a page region.
+ *
+ * It is recommended that template preprocess functions apply this class to any
+ * page region that is output by the theme (Drupal core already handles this in
+ * the standard template preprocess implementation). Standardizing the class
+ * names in this way allows modules to implement certain features, such as
+ * drag-and-drop or dynamic AJAX loading, in a theme-independent way.
+ *
+ * @param $region
+ *   The name of the page region (for example, 'page_top' or 'content').
+ *
+ * @return
+ *   An HTML class that identifies the region (for example, 'region-page-top'
+ *   or 'region-content').
+ *
+ * @see template_preprocess_region()
+ */
+function drupal_region_class($region) {
+  return drupal_html_class("region-$region");
 }
 
 /**
@@ -3924,10 +3995,6 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
  * @see drupal_render().
  */
 function drupal_process_attached($elements, $weight = JS_DEFAULT, $dependency_check = FALSE) {
-  // If there is nothing to process then return.
-  if (empty($elements['#attached'])) {
-    return;
-  }
   // Add defaults to the special attached structures that should be processed differently.
   $elements['#attached'] += array(
     'library' => array(),
@@ -4026,13 +4093,11 @@ function drupal_process_attached($elements, $weight = JS_DEFAULT, $dependency_ch
  *   @endcode
  */
 function drupal_process_states(&$elements) {
-  if (!empty($elements['#states'])) {
-    $elements['#attached']['js']['misc/states.js'] = array('weight' => JS_LIBRARY + 1);
-    $elements['#attached']['js'][] = array(
-      'type' => 'setting',
-      'data' => array('states' => array('#' . $elements['#id'] => $elements['#states'])),
-    );
-  }
+  $elements['#attached']['js']['misc/states.js'] = array('weight' => JS_LIBRARY + 1);
+  $elements['#attached']['js'][] = array(
+    'type' => 'setting',
+    'data' => array('states' => array('#' . $elements['#id'] => $elements['#states'])),
+  );
 }
 
 /**
@@ -4307,10 +4372,22 @@ function drupal_clear_js_cache() {
  * Converts a PHP variable into its Javascript equivalent.
  *
  * We use HTML-safe strings, i.e. with <, > and & escaped.
+ *
+ * @see drupal_json_decode()
  */
 function drupal_json_encode($var) {
-  // json_encode() does not escape <, > and &, so we do it with str_replace()
-  return str_replace(array("<", ">", "&"), array('\x3c', '\x3e', '\x26'), json_encode($var));
+  // json_encode() does not escape <, > and &, so we do it with str_replace().
+  return str_replace(array('<', '>', '&'), array('\x3c', '\x3e', '\x26'), json_encode($var));
+}
+
+/**
+ * Converts an HTML-safe JSON string into its PHP equivalent.
+ *
+ * @see drupal_json_encode()
+ */
+function drupal_json_decode($var) {
+  // json_decode() does not unescape <, > and &, so we do it with str_replace().
+  return json_decode(str_replace(array('\x3c', '\x3e', '\x26'), array('<', '>', '&'), $var), TRUE);
 }
 
 /**
@@ -4437,8 +4514,6 @@ function _drupal_bootstrap_full() {
   set_error_handler('_drupal_error_handler');
   set_exception_handler('_drupal_exception_handler');
 
-  // Emit the correct charset HTTP header.
-  drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
   // Detect string handling method
   unicode_check();
   // Undo magic quotes
@@ -4700,26 +4775,39 @@ function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1)
  *   keyed array as described above.
  */
 function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
-  $hook = $type . '_alter';
-  foreach (module_implements($hook) as $module) {
-    $function = $module . '_' . $hook;
-    $function($data, $context1, $context2);
-  }
-  // Allow the theme to alter variables after the theme system has been
-  // initialized.
-  global $theme, $base_theme_info;
-  if (isset($theme)) {
-    $theme_keys = array();
-    foreach ($base_theme_info as $base) {
-      $theme_keys[] = $base->name;
+  // Use the advanced drupal_static() pattern, since this is called very often.
+  static $drupal_static = array();
+  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
+  $functions = &$drupal_static[__FUNCTION__];
+
+  // Some alter hooks are invoked many times per page request, so statically
+  // cache the list of functions to call, and on subsequent calls, iterate
+  // through them quickly.
+  if (!isset($functions[$type])) {
+    $functions[$type] = array();
+    $hook = $type . '_alter';
+    foreach (module_implements($hook) as $module) {
+      $functions[$type][] = $module . '_' . $hook;
     }
-    $theme_keys[] = $theme;
-    foreach ($theme_keys as $theme_key) {
-      $function = $theme_key . '_' . $hook;
-      if (function_exists($function)) {
-        $function($data, $context1, $context2);
+    // Allow the theme to alter variables after the theme system has been
+    // initialized.
+    global $theme, $base_theme_info;
+    if (isset($theme)) {
+      $theme_keys = array();
+      foreach ($base_theme_info as $base) {
+        $theme_keys[] = $base->name;
+      }
+      $theme_keys[] = $theme;
+      foreach ($theme_keys as $theme_key) {
+        $function = $theme_key . '_' . $hook;
+        if (function_exists($function)) {
+          $functions[$type][] = $function;
+        }
       }
     }
+  }
+  foreach ($functions[$type] as $function) {
+    $function($data, $context1, $context2);
   }
 }
 
@@ -4895,9 +4983,8 @@ function drupal_render_page($page) {
  *   The rendered HTML.
  */
 function drupal_render(&$elements) {
-  static $defaults;
   // Early-return nothing if user does not have access.
-  if (!isset($elements) || (isset($elements['#access']) && !$elements['#access'])) {
+  if (empty($elements) || (isset($elements['#access']) && !$elements['#access'])) {
     return;
   }
 
@@ -4910,7 +4997,7 @@ function drupal_render(&$elements) {
   if (isset($elements['#cache']) && $cached_output = drupal_render_cache_get($elements)) {
     return $cached_output;
   }
-  
+
   // If #markup is not empty, set #type. This allows to specify just #markup on
   // an element without setting #type.
   if (!empty($elements['#markup']) && !isset($elements['#type'])) {
@@ -4921,12 +5008,6 @@ function drupal_render(&$elements) {
   // them.
   if (isset($elements['#type']) && empty($elements['#defaults_loaded'])) {
     $elements += element_info($elements['#type']);
-  }
-  else {
-    if (!isset($defaults)) {
-      $defaults = element_basic_defaults();
-    }
-    $elements += $defaults;
   }
 
   // Make any final changes to the element before it is rendered. This means
@@ -4953,10 +5034,13 @@ function drupal_render(&$elements) {
   if (isset($elements['#theme'])) {
     $elements['#children'] = theme($elements['#theme'], $elements);
   }
-  // If #theme was not set and the element has children, render them now
-  // using drupal_render_children().
+  // If #theme was not set and the element has children, render them now.
+  // This is the same process as drupal_render_children() but is inlined
+  // for speed.
   if ($elements['#children'] == '') {
-    $elements['#children'] = drupal_render_children($elements, $children);
+    foreach ($children as $key) {
+      $elements['#children'] .= drupal_render($elements[$key]);
+    }
   }
 
   // Let the theme functions in #theme_wrappers add markup around the rendered
@@ -4979,11 +5063,15 @@ function drupal_render(&$elements) {
   }
 
   // Add any JavaScript state information associated with the element.
-  drupal_process_states($elements);
+  if (!empty($elements['#states'])) {
+    drupal_process_states($elements);
+  }
 
   // Add additional libraries, CSS, JavaScript an other custom
   // attached data associated with this element.
-  drupal_process_attached($elements);
+  if (!empty($elements['#attached'])) {
+    drupal_process_attached($elements);
+  }
 
   $prefix = isset($elements['#prefix']) ? $elements['#prefix'] : '';
   $suffix = isset($elements['#suffix']) ? $elements['#suffix'] : '';
@@ -5015,7 +5103,9 @@ function drupal_render_children(&$element, $children_keys = NULL) {
   }
   $output = '';
   foreach ($children_keys as $key) {
-    $output .= drupal_render($element[$key]);
+    if (!empty($element[$key])) {
+      $output .= drupal_render($element[$key]);
+    }
   }
   return $output;
 }
@@ -5091,7 +5181,9 @@ function drupal_render_cache_get($elements) {
   if (!empty($cid) && $cache = cache_get($cid, $bin)) {
     // Add additional libraries, JavaScript, CSS and other data attached
     // to this element.
-    drupal_process_attached($cache->data);
+    if (isset($cache->data['#attached'])) {
+      drupal_process_attached($cache->data);
+    }
     // Return the rendered output.
     return $cache->data['#markup'];;
   }
@@ -5119,7 +5211,9 @@ function drupal_render_cache_set($markup, $elements) {
 
   $data['#markup'] = $markup;
   // Persist attached data associated with this element.
-  $data['#attached'] = $elements['#attached'];
+  if (isset($elements['#attached'])) {
+    $data['#attached'] = $elements['#attached'];
+  }
   $bin = isset($elements['#cache']['bin']) ? $elements['#cache']['bin'] : 'cache';
   $expire = isset($elements['#cache']['expire']) ? $elements['#cache']['expire'] : CACHE_PERMANENT;
   cache_set($cid, $data, $bin, $expire);
@@ -5211,10 +5305,8 @@ function element_info($type) {
   $cache = &drupal_static(__FUNCTION__);
 
   if (!isset($cache)) {
-    $basic_defaults = element_basic_defaults();
     $cache = module_invoke_all('element_info');
     foreach ($cache as $element_type => $info) {
-      $cache[$element_type] = array_merge_recursive($basic_defaults, $info);
       $cache[$element_type]['#type'] = $element_type;
     }
     // Allow modules to alter the element type defaults.
@@ -5222,19 +5314,6 @@ function element_info($type) {
   }
 
   return isset($cache[$type]) ? $cache[$type] : array();
-}
-
-/**
- * Retrieve the basic default properties that are common to all elements.
- */
-function element_basic_defaults() {
-  return array(
-    '#description' => '',
-    '#title' => '',
-    '#attributes' => array(),
-    '#required' => FALSE,
-    '#attached' => array(),
-  );
 }
 
 /**
@@ -5335,6 +5414,9 @@ function drupal_common_theme() {
     'status_messages' => array(
       'variables' => array('display' => NULL),
     ),
+    'link' => array(
+      'variables' => array('text' => NULL, 'path' => NULL, 'options' => array()),
+    ),
     'links' => array(
       'variables' => array('links' => NULL, 'attributes' => array('class' => array('links')), 'heading' => array()),
     ),
@@ -5351,7 +5433,7 @@ function drupal_common_theme() {
       'variables' => array('links' => NULL),
     ),
     'table' => array(
-      'variables' => array('header' => NULL, 'rows' => NULL, 'attributes' => array(), 'caption' => NULL, 'colgroups' => array(), 'sticky' => TRUE),
+      'variables' => array('header' => NULL, 'rows' => NULL, 'attributes' => array(), 'caption' => NULL, 'colgroups' => array(), 'sticky' => TRUE, 'empty' => ''),
     ),
     'table_select_header_cell' => array(
       'variables' => array(),
@@ -5503,6 +5585,9 @@ function drupal_common_theme() {
     'form_required_marker' => array(
       'arguments' => array('element' => NULL),
     ),
+    'form_element_label' => array(
+      'render element' => 'element',
+    ),
     'text_format_wrapper' => array(
       'render element' => 'element',
     ),
@@ -5521,7 +5606,7 @@ function drupal_common_theme() {
  */
 
 /**
- * Create all tables that a module defines in its hook_schema().
+ * Creates all tables in a module's hook_schema() implementation.
  *
  * Note: This function does not pass the module's schema through
  * hook_schema_alter(). The module's tables will be created exactly as the
@@ -5529,10 +5614,6 @@ function drupal_common_theme() {
  *
  * @param $module
  *   The module for which the tables will be created.
- * @return
- *   An array of arrays with the following key/value pairs:
- *    - success: a boolean indicating whether the query succeeded.
- *    - query: the SQL query(s) executed, passed through check_plain().
  */
 function drupal_install_schema($module) {
   $schema = drupal_get_schema_unprocessed($module);
@@ -5898,6 +5979,7 @@ function drupal_parse_info_file($filename) {
  */
 function drupal_parse_info_format($data) {
   $info = array();
+  $constants = get_defined_constants();
 
   if (preg_match_all('
     @^\s*                           # Start at the beginning of a line, ignoring leading whitespace
@@ -5936,8 +6018,8 @@ function drupal_parse_info_format($data) {
         $parent = &$parent[$key];
       }
 
-      // Handle PHP constants
-      if (defined($value)) {
+      // Handle PHP constants.
+      if (isset($constants[$value])) {
         $value = constant($value);
       }
 
@@ -6042,7 +6124,7 @@ function drupal_flush_all_caches() {
   node_types_rebuild();
   // Don't clear cache_form - in-progress form submissions may break.
   // Ordered so clearing the page cache will always be the last action.
-  $core = array('cache', 'cache_filter', 'cache_registry', 'cache_page');
+  $core = array('cache', 'cache_filter', 'cache_bootstrap', 'cache_page');
   $cache_tables = array_merge(module_invoke_all('flush_caches'), $core);
   foreach ($cache_tables as $table) {
     cache_clear_all('*', $table, TRUE);
@@ -6181,8 +6263,10 @@ function drupal_check_incompatibility($v, $current_version) {
  *   to return an array with info about all types.
  */
 function entity_get_info($entity_type = NULL) {
-  // We statically cache the information returned by hook_entity_info().
-  $entity_info = &drupal_static(__FUNCTION__, array());
+  // Use the advanced drupal_static() pattern, since this is called very often.
+  static $drupal_static = array();
+  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
+  $entity_info = &$drupal_static[__FUNCTION__];
 
   if (empty($entity_info)) {
     if ($cache = cache_get('entity_info')) {
@@ -6219,6 +6303,14 @@ function entity_get_info($entity_type = NULL) {
   }
 
   return empty($entity_type) ? $entity_info : $entity_info[$entity_type];
+}
+
+/**
+ * Resets the cached information about entity types.
+ */
+function entity_info_cache_clear() {
+  drupal_static_reset('entity_get_info');
+  cache_clear_all('entity_info', 'cache');
 }
 
 /**

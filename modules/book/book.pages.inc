@@ -1,5 +1,5 @@
 <?php
-// $Id: book.pages.inc,v 1.20 2009-11-01 12:11:10 dries Exp $
+// $Id: book.pages.inc,v 1.23 2009-12-02 19:26:21 dries Exp $
 
 /**
  * @file
@@ -79,7 +79,7 @@ function book_export_html($nid) {
       $contents = book_export_traverse($tree, 'book_node_export');
     }
 
-    return theme('book_export_html', array('title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'], 'contents' => $contents, 'depth' => $node->book['depth']));
+    return theme('book_export_html', array('title' => $node->title[LANGUAGE_NONE][0]['value'], 'contents' => $contents, 'depth' => $node->book['depth']));
   }
   else {
     drupal_access_denied();
@@ -89,8 +89,8 @@ function book_export_html($nid) {
 /**
  * Menu callback; show the outline form for a single node.
  */
-function book_outline(stdClass $node) {
-  drupal_set_title($node->title[FIELD_LANGUAGE_NONE][0]['value']);
+function book_outline($node) {
+  drupal_set_title($node->title[LANGUAGE_NONE][0]['value']);
   return drupal_get_form('book_outline_form', $node);
 }
 
@@ -102,7 +102,7 @@ function book_outline(stdClass $node) {
  *
  * @ingroup forms
  */
-function book_outline_form($form, &$form_state, stdClass $node) {
+function book_outline_form($form, &$form_state, $node) {
   if (!isset($node->book)) {
     // The node is not part of any book yet - set default options.
     $node->book = _book_link_defaults($node->nid);
@@ -117,7 +117,7 @@ function book_outline_form($form, &$form_state, stdClass $node) {
   }
   $form['#node'] = $node;
   $form['#id'] = 'book-outline';
-  _book_add_form_elements($form, $node);
+  _book_add_form_elements($form, $form_state, $node);
 
   $form['book']['#collapsible'] = FALSE;
 
@@ -186,9 +186,9 @@ function book_outline_form_submit($form, &$form_state) {
  *
  * @ingroup forms
  */
-function book_remove_form($form, &$form_state, stdClass $node) {
+function book_remove_form($form, &$form_state, $node) {
   $form['#node'] = $node;
-  $title = array('%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value']);
+  $title = array('%title' => $node->title[LANGUAGE_NONE][0]['value']);
 
   if ($node->book['has_children']) {
     $description = t('%title has associated child pages, which will be relocated automatically to maintain their connection to the book. To recreate the hierarchy (as it was before removing this page), %title may be added again using the Outline tab, and each of its former child pages will need to be relocated manually.', $title);

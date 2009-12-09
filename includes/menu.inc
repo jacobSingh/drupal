@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.358 2009-11-01 23:02:13 webchick Exp $
+// $Id: menu.inc,v 1.365 2009-12-04 16:47:15 dries Exp $
 
 /**
  * @file
@@ -189,6 +189,14 @@ define('MENU_LOCAL_ACTION', MENU_IS_LOCAL_TASK | MENU_IS_LOCAL_ACTION);
  * @{
  * Flags for use in the "context" attribute of menu router items.
  */
+
+/**
+ * Internal menu flag: Invisible local task.
+ *
+ * This flag may be used for local tasks like "Delete", so custom modules and
+ * themes can alter the default context and expose the task by altering menu.
+ */
+define('MENU_CONTEXT_NONE', 0x0000);
 
 /**
  * Internal menu flag: Local task should be displayed in page context.
@@ -1408,7 +1416,22 @@ function theme_menu_link(array $variables) {
  */
 function theme_menu_local_task($variables) {
   $link = $variables['element']['#link'];
-  return '<li' . (!empty($variables['element']['#active']) ? ' class="active"' : '') . '>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
+  $link_text = $link['title'];
+
+  if (!empty($variables['element']['#active'])) {
+    // Add text to indicate active tab for non-visual users.
+    $active = '<span class="element-invisible">' . t('(active tab)') . '</span>';
+
+    // If the link does not contain HTML already, check_plain() it now.
+    // After we set 'html'=TRUE the link will not be sanitized by l().
+    if (empty($link['localized_options']['html'])) {
+      $link['title'] = check_plain($link['title']);
+    }
+    $link['localized_options']['html'] = TRUE;
+    $link_text = t('!local-task-title !active', array('!local-task-title' => $link['title'], '!active' => $active));
+  }
+
+  return '<li' . (!empty($variables['element']['#active']) ? ' class="active"' : '') . '>' . l($link_text, $link['href'], $link['localized_options']) . "</li>\n";
 }
 
 /**
@@ -1423,7 +1446,20 @@ function theme_menu_local_task($variables) {
  */
 function theme_menu_local_action($variables) {
   $link = $variables['element']['#link'];
-  return '<li>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
+
+  $output = '<li>';
+  if (isset($link['href'])) {
+    $output .= l($link['title'], $link['href'], isset($link['localized_options']) ? $link['localized_options'] : array());
+  }
+  elseif (!empty($link['localized_options']['html'])) {
+    $output .= $link['title'];
+  }
+  else {
+    $output .= check_plain($link['title']);
+  }
+  $output .= "</li>\n";
+
+  return $output;
 }
 
 /**
@@ -1775,6 +1811,11 @@ function menu_local_tasks($level = 0) {
       'root_path' => $root_path,
     );
   }
+  // @todo If there are no tabs, then there still can be actions; for example,
+  //   when added via hook_menu_local_tasks_alter().
+  elseif (!empty($data['actions']['output'])) {
+    return array('actions' => $data['actions']) + $empty;
+  }
   return $empty;
 }
 
@@ -1796,16 +1837,26 @@ function menu_local_tasks($level = 0) {
  * If the path "node/123" is passed to this function, then it will return the
  * links for 'edit' and 'report-as-spam'.
  *
- * @param $path
- *   The menu router path of the object to retrieve local tasks for, for example
- *   "node/123" or "admin/structure/menu/manage/[menu_name]".
+ * @param $module
+ *   The name of the implementing module. This is used to prefix the key for
+ *   each contextual link, which is transformed into a CSS class during
+ *   rendering by theme_links(). For example, if $module is 'block' and the
+ *   retrieved local task path argument is 'edit', then the resulting CSS class
+ *   will be 'block-edit'.
+ * @param $parent_path
+ *   The static menu router path of the object to retrieve local tasks for, for
+ *   example 'node' or 'admin/structure/block/manage'.
+ * @param $args
+ *   A list of dynamic path arguments to append to $parent_path to form the
+ *   fully-qualified menu router path, for example array(123) for a certain
+ *   node or array('system', 'navigation') for a certain block.
  *
  * @return
  *   A list of menu router items that are local tasks for the passed in path.
  *
  * @see system_preprocess()
  */
-function menu_contextual_links($parent_path, $args) {
+function menu_contextual_links($module, $parent_path, $args) {
   static $path_empty = array();
 
   $links = array();
@@ -1834,6 +1885,7 @@ function menu_contextual_links($parent_path, $args) {
     $data[$root_path] = db_select('menu_router', 'm')
       ->fields('m')
       ->condition('tab_parent', $router_item['tab_root'])
+      ->condition('context', MENU_CONTEXT_NONE, '<>')
       ->condition('context', MENU_CONTEXT_PAGE, '<>')
       ->orderBy('weight')
       ->orderBy('title')
@@ -1851,12 +1903,9 @@ function menu_contextual_links($parent_path, $args) {
     if (!$item['access']) {
       continue;
     }
-    // All contextual links are keyed by the actual "task" path argument. The
-    // menu system does not allow for two local tasks with the same name, and
-    // since the key is also used as CSS class for the link item, which may be
-    // styled as icon, it wouldn't make sense to display the same icon for
-    // different tasks.
-    $links[$key] = $item;
+    // All contextual links are keyed by the actual "task" path argument,
+    // prefixed with the name of the implementing module.
+    $links[$module . '-' . $key] = $item;
   }
 
   // Allow modules to alter contextual links.
@@ -2154,6 +2203,9 @@ function menu_cache_clear($menu_name = 'navigation') {
     register_shutdown_function('cache_clear_all', 'links:' . $menu_name . ':', 'cache_menu', TRUE);
     $cache_cleared[$menu_name] = 2;
   }
+
+  // Also clear the menu system static caches.
+  menu_reset_static_cache();
 }
 
 /**
@@ -2162,6 +2214,16 @@ function menu_cache_clear($menu_name = 'navigation') {
  */
 function menu_cache_clear_all() {
   cache_clear_all('*', 'cache_menu', TRUE);
+  menu_reset_static_cache();
+}
+
+/**
+ * Resets the menu system static cache.
+ */
+function menu_reset_static_cache() {
+  drupal_static_reset('menu_tree');
+  drupal_static_reset('menu_tree_all_data');
+  drupal_static_reset('menu_tree_page_data');
 }
 
 /**
@@ -3118,7 +3180,7 @@ function _menu_router_build($callbacks) {
  */
 function _menu_router_save($menu, $masks) {
   // Delete the existing router since we have some data to replace it.
-  db_delete('menu_router')->execute();
+  db_truncate('menu_router')->execute();
 
   // Prepare insert object.
   $insert = db_insert('menu_router')

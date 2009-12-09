@@ -1,5 +1,5 @@
 <?php
-// $Id: database.inc,v 1.81 2009-10-18 06:56:24 webchick Exp $
+// $Id: database.inc,v 1.85 2009-12-04 16:31:04 dries Exp $
 
 /**
  * @file
@@ -229,6 +229,13 @@ abstract class DatabaseConnection extends PDO {
   protected $willRollback;
 
   /**
+   * Array of argument arrays for logging post-rollback.
+   *
+   * @var array
+   */
+  protected $rollbackLogs = array();
+
+  /**
    * The name of the Select class for this connection.
    *
    * Normally this and the following class names would be static variables,
@@ -439,7 +446,7 @@ abstract class DatabaseConnection extends PDO {
    *   Whether or not to cache the prepared statement for later reuse in this
    *   same request.  Usually we want to, but queries that require preprocessing
    *   cannot be safely cached.
-   * @return
+   * @return DatabaseStatementInterface
    *   A PDO prepared statement ready for its execute() method.
    */
   public function prepareQuery($query, $cache = TRUE) {
@@ -492,7 +499,7 @@ abstract class DatabaseConnection extends PDO {
   /**
    * Get the current logging object for this connection.
    *
-   * @return
+   * @return DatabaseLog
    *   The current logging object for this connection. If there isn't one,
    *   NULL is returned.
    */
@@ -541,7 +548,7 @@ abstract class DatabaseConnection extends PDO {
    * @param $options
    *   An associative array of options to control how the query is run. See
    *   the documentation for DatabaseConnection::defaultOptions() for details.
-   * @return
+   * @return DatabaseStatementInterface
    *   This method will return one of: The executed statement, the number of
    *   rows affected by the query (not the number matched), or the generated
    *   insert id of the last query, depending on the value of $options['return'].
@@ -663,7 +670,7 @@ abstract class DatabaseConnection extends PDO {
    *   The alias of the base table of this query.
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return SelectQueryInterface
    *   A new SelectQuery object.
    */
   public function select($table, $alias = NULL, array $options = array()) {
@@ -687,7 +694,7 @@ abstract class DatabaseConnection extends PDO {
    * @see InsertQuery
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return InsertQuery
    *   A new InsertQuery object.
    */
   public function insert($table, array $options = array()) {
@@ -707,7 +714,7 @@ abstract class DatabaseConnection extends PDO {
    * @see MergeQuery
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return MergeQuery
    *   A new MergeQuery object.
    */
   public function merge($table, array $options = array()) {
@@ -728,7 +735,7 @@ abstract class DatabaseConnection extends PDO {
    * @see UpdateQuery
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return UpdateQuery
    *   A new UpdateQuery object.
    */
   public function update($table, array $options = array()) {
@@ -748,7 +755,7 @@ abstract class DatabaseConnection extends PDO {
    * @see DeleteQuery
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return DeleteQuery
    *   A new DeleteQuery object.
    */
   public function delete($table, array $options = array()) {
@@ -768,7 +775,7 @@ abstract class DatabaseConnection extends PDO {
    * @see TruncateQuery
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return TruncateQuery
    *   A new DeleteQuery object.
    */
   public function truncate($table, array $options = array()) {
@@ -787,7 +794,7 @@ abstract class DatabaseConnection extends PDO {
    *
    * This method will lazy-load the appropriate schema library file.
    *
-   * @return
+   * @return DatabaseSchema
    *   The DatabaseSchema object for this connection.
    */
   public function schema() {
@@ -849,10 +856,51 @@ abstract class DatabaseConnection extends PDO {
    * Schedule the current transaction for rollback.
    *
    * This method throws an exception if no transaction is active.
+   *
+   * @param $type
+   *   The category to which the rollback message belongs.
+   * @param $message
+   *   The message to store in the log. Keep $message translatable
+   *   by not concatenating dynamic values into it! Variables in the
+   *   message should be added by using placeholder strings alongside
+   *   the variables argument to declare the value of the placeholders.
+   * @param $variables
+   *   Array of variables to replace in the message on display or
+   *   NULL if message is already translated or not possible to
+   *   translate.
+   * @param $severity
+   *   The severity of the message, as per RFC 3164.
+   * @param $link
+   *   A link to associate with the message.
+   *
+   * @see DatabaseTransaction::rollback()
+   * @see watchdog()
    */
-  public function rollback() {
+  public function rollback($type = NULL, $message = NULL, $variables = array(), $severity = NULL, $link = NULL) {
     if ($this->transactionLayers == 0) {
       throw new NoActiveTransactionException();
+    }
+
+    // Set the severity to the configured default if not specified.
+    if (!isset($severity)) {
+      $logging = Database::getLoggingCallback();
+      if (is_array($logging)) {
+        $severity = $logging['default_severity'];
+      }
+    }
+
+    // Record in an array to send to the log after transaction rollback. Messages written
+    // directly to a log (with a database back-end) will roll back during the following
+    // transaction rollback. This is an array because rollback could be requested multiple
+    // times during a transaction, and all such errors ought to be logged.
+    if (isset($message)) {
+      $this->rollbackLogs[] = array(
+        'type' => $type,
+        'message' => $message,
+        'variables' => $variables,
+        'severity' => $severity,
+        'link' => $link,
+      );
     }
 
     $this->willRollback = TRUE;
@@ -890,9 +938,6 @@ abstract class DatabaseConnection extends PDO {
       if ($this->supportsTransactions()) {
         parent::beginTransaction();
       }
-
-      // Reset any scheduled rollback
-      $this->willRollback = FALSE;
     }
   }
 
@@ -912,11 +957,41 @@ abstract class DatabaseConnection extends PDO {
 
     --$this->transactionLayers;
 
-    if ($this->transactionLayers == 0 && $this->supportsTransactions()) {
+    if ($this->transactionLayers == 0) {
       if ($this->willRollback) {
-        parent::rollBack();
+        $logging = Database::getLoggingCallback();
+        $logging_callback = NULL;
+        if (is_array($logging)) {
+          $logging_callback = $logging['callback'];
+        }
+
+        if ($this->supportsTransactions()) {
+          parent::rollBack();
+        }
+        else {
+          if (isset($logging_callback)) {
+            // Log the failed rollback.
+            $logging_callback('database', 'Explicit rollback failed: not supported on active connection.', array(), $logging['error_severity']);
+          }
+
+          // It would be nice to throw an exception here if logging failed,
+          // but throwing exceptions in destructors is not supported.
+        }
+
+        if (isset($logging_callback)) {
+          // Play back the logged errors to the specified logging callback post-rollback.
+          foreach ($this->rollbackLogs as $log_item) {
+            $logging_callback($log_item['type'], $log_item['message'], $log_item['variables'], $log_item['severity'], $log_item['link']);
+          }
+        }
+
+        // Reset any scheduled rollback.
+        $this->willRollback = FALSE;
+
+        // Reset the error logs.
+        $this->rollbackLogs = array();
       }
-      else {
+      elseif ($this->supportsTransactions()) {
         parent::commit();
       }
     }
@@ -940,7 +1015,7 @@ abstract class DatabaseConnection extends PDO {
    *   The maximum number of result rows to return.
    * @param $options
    *   An array of options on the query.
-   * @return
+   * @return DatabaseStatementInterface
    *   A database query result resource, or NULL if the query was not executed
    *   correctly.
    */
@@ -1164,6 +1239,17 @@ abstract class Database {
   static protected $logs = array();
 
   /**
+   * A logging function callback array.
+   *
+   * The function must accept the same function signature as Drupal's watchdog().
+   * The array containst key/value pairs for callback (string), default_severity (int),
+   * and error_severity (int).
+   *
+   * @var string
+   */
+  static protected $logging_callback = NULL;
+
+  /**
    * Start logging a given logging key on the specified connection.
    *
    * @see DatabaseLog
@@ -1171,7 +1257,7 @@ abstract class Database {
    *   The logging key to log.
    * @param $key
    *   The database connection key for which we want to log.
-   * @return
+   * @return DatabaseLog
    *   The query log object. Note that the log object does support richer
    *   methods than the few exposed through the Database class, so in some
    *   cases it may be desirable to access it directly.
@@ -1194,6 +1280,37 @@ abstract class Database {
   }
 
   /**
+   * Set a logging callback for notices and errors.
+   *
+   * @see watchdog()
+   * @param $logging_callback
+   *   The function to use as the logging callback.
+   * @param $logging_default_severity
+   *   The default severity level to use for logged messages.
+   * @param $logging_error_severity
+   *   The severity level to use for logging error messages.
+   */
+  final public static function setLoggingCallback($callback, $default_severity, $error_severity) {
+    self::$logging_callback = array(
+      'callback' => $callback,
+      'default_severity' => $default_severity,
+      'error_severity' => $error_severity,
+    );
+  }
+
+  /**
+   * Get the logging callback for notices and errors.
+   *
+   * @return
+   *   An array with the logging callback and severity levels.
+   *
+   * @see watchdog()
+   */
+  final public static function getLoggingCallback() {
+    return self::$logging_callback;
+  }
+
+  /**
    * Retrieve the queries logged on for given logging key.
    *
    * This method also ends logging for the specified key. To get the query log
@@ -1206,7 +1323,7 @@ abstract class Database {
    *   The logging key to log.
    * @param $key
    *   The database connection key for which we want to log.
-   * @return
+   * @return array
    *   The query log for the specified logging key and connection.
    */
   final public static function getLog($logging_key, $key = 'default') {
@@ -1226,7 +1343,7 @@ abstract class Database {
    * @param $key
    *   The database connection key. Defaults to NULL which means the active
    *   key.
-   * @return
+   * @return DatabaseConnection
    *   The corresponding connection object.
    */
   final public static function getConnection($target = 'default', $key = NULL) {
@@ -1542,9 +1659,34 @@ class DatabaseTransaction {
    *
    * This is just a wrapper method to rollback whatever transaction stack we
    * are currently in, which is managed by the connection object itself.
+   *
+   * @param $type
+   *   The category to which the rollback message belongs.
+   * @param $message
+   *   The message to store in the log. Keep $message translatable
+   *   by not concatenating dynamic values into it! Variables in the
+   *   message should be added by using placeholder strings alongside
+   *   the variables argument to declare the value of the placeholders.
+   * @param $variables
+   *   Array of variables to replace in the message on display or
+   *   NULL if message is already translated or not possible to
+   *   translate.
+   * @param $severity
+   *   The severity of the message, as per RFC 3164.
+   * @param $link
+   *   A link to associate with the message.
+   *
+   * @see DatabaseConnection::rollback()
+   * @see watchdog()
    */
-  public function rollback() {
-    $this->connection->rollback();
+  public function rollback($type = NULL, $message = NULL, $variables = array(), $severity = NULL, $link = NULL) {
+    if (!isset($severity)) {
+      $logging = Database::getLoggingCallback();
+      if (is_array($logging)) {
+        $severity = $logging['default_severity'];
+      }
+    }
+    $this->connection->rollback($type, $message, $variables, $severity, $link);
   }
 
   /**
@@ -1861,7 +2003,7 @@ class DatabaseStatementBase extends PDOStatement implements DatabaseStatementInt
  *   the order of placeholders in the query string.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return DatabaseStatementInterface
  *   A prepared statement object, already executed.
  */
 function db_query($query, array $args = array(), array $options = array()) {
@@ -1891,7 +2033,7 @@ function db_query($query, array $args = array(), array $options = array()) {
  *   the order of placeholders in the query string.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return DatabaseStatementInterface
  *   A prepared statement object, already executed.
  */
 function db_query_range($query, $from, $count, array $args = array(), array $options = array()) {
@@ -1935,7 +2077,7 @@ function db_query_temporary($query, array $args = array(), array $options = arra
  *   The table into which to insert.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return InsertQuery
  *   A new InsertQuery object for this connection.
  */
 function db_insert($table, array $options = array()) {
@@ -1952,7 +2094,7 @@ function db_insert($table, array $options = array()) {
  *   The table into which to merge.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return MergeQuery
  *   A new MergeQuery object for this connection.
  */
 function db_merge($table, array $options = array()) {
@@ -1969,7 +2111,7 @@ function db_merge($table, array $options = array()) {
  *   The table to update.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return UpdateQuery
  *   A new UpdateQuery object for this connection.
  */
 function db_update($table, array $options = array()) {
@@ -1986,7 +2128,7 @@ function db_update($table, array $options = array()) {
  *   The table from which to delete.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return DeleteQuery
  *   A new DeleteQuery object for this connection.
  */
 function db_delete($table, array $options = array()) {
@@ -2003,7 +2145,7 @@ function db_delete($table, array $options = array()) {
  *   The table from which to delete.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return TruncateQuery
  *   A new TruncateQuery object for this connection.
  */
 function db_truncate($table, array $options = array()) {
@@ -2023,7 +2165,7 @@ function db_truncate($table, array $options = array()) {
  *   The alias for the base table of this query.
  * @param $options
  *   An array of options to control how the query operates.
- * @return
+ * @return SelectQuery
  *   A new SelectQuery object for this connection.
  */
 function db_select($table, $alias = NULL, array $options = array()) {
@@ -2043,7 +2185,7 @@ function db_select($table, $alias = NULL, array $options = array()) {
  * @param $options
  *   An array of options to control how the transaction operates.  Only the
  *   target key has any meaning in this case.
- * @return
+ * @return DatabaseTransaction
  *   A new DatabaseTransaction object for this connection.
  */
 function db_transaction($required = FALSE, Array $options = array()) {
@@ -2300,22 +2442,22 @@ function db_field_set_no_default($table, $field) {
 }
 
 /**
- * Add a primary key.
+ * Adds a primary key to a database table.
  *
  * @param $table
- *   The table to be altered.
+ *   Name of the table to be altered.
  * @param $fields
- *   Fields for the primary key.
+ *   Array of fields for the primary key.
  */
 function db_add_primary_key($table, $fields) {
   return Database::getConnection()->schema()->addPrimaryKey($table, $fields);
 }
 
 /**
- * Drop the primary key.
+ * Drops the primary key of a database table.
  *
  * @param $table
- *   The table to be altered.
+ *   Name of the table to be altered.
  */
 function db_drop_primary_key($table) {
   return Database::getConnection()->schema()->dropPrimaryKey($table);

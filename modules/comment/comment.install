@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.install,v 1.51 2009-10-16 13:20:15 dries Exp $
+// $Id: comment.install,v 1.54 2009-12-04 16:49:46 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_uninstall().
+ * Implements hook_uninstall().
  */
 function comment_uninstall() {
   // Remove variables.
@@ -27,7 +27,7 @@ function comment_uninstall() {
 }
 
 /**
- * Implement hook_enable().
+ * Implements hook_enable().
  */
 function comment_enable() {
   // Insert records into the node_comment_statistics for nodes that are missing.
@@ -195,12 +195,32 @@ function comment_update_7009() {
 }
 
 /**
+ * Add {node_comment_statistics}.cid column.
+ */
+function comment_update_7010() {
+  db_add_field('node_comment_statistics', 'cid', array(
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+    'description' => 'The {comment}.cid of the last comment.',
+  ));
+  db_add_index('node_comment_statistics', 'cid', array('cid'));
+}
+
+/**
+ * Add an index to node_comment_statistics on comment_count.
+ */
+function comment_update_7011() {
+  db_add_index('node_comment_statistics', 'comment_count', array('comment_count'));
+}
+
+/**
  * @} End of "defgroup updates-6.x-to-7.x"
  * The next series of updates should start at 8000.
  */
 
 /**
- * Implement hook_schema().
+ * Implements hook_schema().
  */
 function comment_schema() {
   $schema['comment'] = array(
@@ -330,6 +350,12 @@ function comment_schema() {
         'not null' => TRUE,
         'default' => 0,
         'description' => 'The {node}.nid for which the statistics are compiled.',
+      ),
+      'cid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The {comment}.cid of the last comment.',
       ),
       'last_comment_timestamp' => array(
         'type' => 'int',

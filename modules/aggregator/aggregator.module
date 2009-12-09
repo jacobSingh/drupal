@@ -1,5 +1,5 @@
 <?php
-// $Id: aggregator.module,v 1.428 2009-11-01 17:50:45 dries Exp $
+// $Id: aggregator.module,v 1.431 2009-12-04 16:49:45 dries Exp $
 
 /**
  * @file
@@ -12,14 +12,25 @@
 define('AGGREGATOR_CLEAR_NEVER', 0);
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function aggregator_help($path, $arg) {
   switch ($path) {
     case 'admin/help#aggregator':
-      $output = '<p>' . t('The aggregator is a powerful on-site syndicator and news reader that gathers fresh content from RSS-, RDF-, and Atom-based feeds made available across the web. Thousands of sites (particularly news sites and blogs) publish their latest headlines and posts in feeds, using a number of standardized XML-based formats. Formats supported by the aggregator include <a href="@rss">RSS</a>, <a href="@rdf">RDF</a>, and <a href="@atom">Atom</a>.', array('@rss' => 'http://cyber.law.harvard.edu/rss/', '@rdf' => 'http://www.w3.org/RDF/', '@atom' => 'http://www.atomenabled.org')) . '</p>';
-      $output .= '<p>' . t('Feeds contain feed items, or individual posts published by the site providing the feed. Feeds may be grouped in categories, generally by topic. Users view feed items in the <a href="@aggregator">main aggregator display</a> or by <a href="@aggregator-sources">their source</a>. Administrators can <a href="@feededit">add, edit and delete feeds</a> and choose how often to check each feed for newly updated items. The most recent items in either a feed or category can be displayed as a block through the <a href="@admin-block">blocks administration page</a>. A <a href="@aggregator-opml">machine-readable OPML file</a> of all feeds is available. A correctly configured <a href="@cron">cron maintenance task</a> is required to update feeds automatically.', array('@aggregator' => url('aggregator'), '@aggregator-sources' => url('aggregator/sources'), '@feededit' => url('admin/config/services/aggregator'), '@admin-block' => url('admin/structure/block'), '@aggregator-opml' => url('aggregator/opml'), '@cron' => url('admin/reports/status'))) . '</p>';
-      $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@aggregator">Aggregator module</a>.', array('@aggregator' => 'http://drupal.org/handbook/modules/aggregator/')) . '</p>';
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Aggregator module is an on-site syndicator and news reader that gathers and displays fresh content from RSS-, RDF-, and Atom-based feeds made available across the web. Thousands of sites (particularly news sites and blogs) publish their latest headlines in feeds, using a number of standardized XML-based formats. For more information, see the online handbook entry for <a href="@aggregator-module">Aggregator module</a>.', array('@aggregator-module' => 'http://drupal.org/handbook/modules/aggregator', '@aggregator' => url('aggregator'))) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Viewing feeds') . '</dt>';
+      $output .= '<dd>' . t('Feeds contain published content, and may be grouped in categories, generally by topic. Users view feed content in the <a href="@aggregator">main aggregator display</a>, or by <a href="@aggregator-sources">their source</a> (usually via an RSS feed reader). The most recent content in a feed or category can be displayed as a block through the <a href="@admin-block">Blocks administration page</a>.', array('@aggregator' => url('aggregator'), '@aggregator-sources' => url('aggregator/sources'), '@admin-block' => url('admin/structure/block'))) . '</a></dd>';
+      $output .= '<dt>' . t('Adding, editing, and deleting feeds') . '</dt>';
+      $output .= '<dd>' . t('Administrators can add, edit, and delete feeds, and choose how often to check each feed for newly updated items on the <a href="@feededit">Feed aggregator administration page</a>.', array('@feededit' => url('admin/config/services/aggregator'))) . '</dd>';
+      $output .= '<dt>' . t('OPML integration') . '</dt>';
+      $output .= '<dd>' .  t('A <a href="@aggregator-opml">machine-readable OPML file</a> of all feeds is available. OPML is an XML-based file format used to share outline-structured information such as a list of RSS feeds. Feeds can also be <a href="@import-opml">imported via an OPML file</a>.', array('@aggregator-opml' => url('aggregator/opml'), '@import-opml' => url('admin/config/services/aggregator'))) . '</dd>';
+      $output .= '<dt>' . t('Configuring cron') . '</dt>';
+      $output .= '<dd>' .  t('A correctly configured <a href="@cron">cron maintenance task</a> is required to update feeds automatically.', array('@cron' => url('admin/reports/status'))) . '</dd>';
+      $output .= '</dl>';
       return $output;
     case 'admin/config/services/aggregator':
       $output = '<p>' . t('Thousands of sites (particularly news sites and blogs) publish their latest headlines and posts in feeds, using a number of standardized XML-based formats. Formats supported by the aggregator include <a href="@rss">RSS</a>, <a href="@rdf">RDF</a>, and <a href="@atom">Atom</a>.', array('@rss' => 'http://cyber.law.harvard.edu/rss/', '@rdf' => 'http://www.w3.org/RDF/', '@atom' => 'http://www.atomenabled.org')) . '</p>';
@@ -35,7 +46,7 @@ function aggregator_help($path, $arg) {
 }
 
 /**
- * Implement hook_theme().
+ * Implements hook_theme().
  */
 function aggregator_theme() {
   return array(
@@ -83,7 +94,7 @@ function aggregator_theme() {
 }
 
 /**
- * Implement hook_menu().
+ * Implements hook_menu().
  */
 function aggregator_menu() {
   $items['admin/config/services/aggregator'] = array(
@@ -271,7 +282,7 @@ function _aggregator_category_title($category) {
 }
 
 /**
- * Implement hook_init().
+ * Implements hook_init().
  */
 function aggregator_init() {
   drupal_add_css(drupal_get_path('module', 'aggregator') . '/aggregator.css');
@@ -288,23 +299,21 @@ function _aggregator_has_categories() {
 }
 
 /**
- * Implement hook_permission().
+ * Implements hook_permission().
  */
 function aggregator_permission() {
   return array(
     'administer news feeds' => array(
       'title' => t('Administer news feeds'),
-      'description' => t('Add, edit or delete news feeds that are aggregated to your site.'),
     ),
     'access news feeds' => array(
-      'title' => t('Access news feeds'),
-      'description' => t('View aggregated news feed items.'),
+      'title' => t('View news feeds'),
     ),
   );
 }
 
 /**
- * Implement hook_cron().
+ * Implements hook_cron().
  *
  * Queues news feeds for updates once their refresh interval has elapsed.
  */
@@ -320,7 +329,7 @@ function aggregator_cron() {
 }
 
 /**
- * Implement hook_cron_queue_info().
+ * Implements hook_cron_queue_info().
  */
 function aggregator_cron_queue_info() {
   $queues['aggregator_feeds'] = array(
@@ -331,7 +340,7 @@ function aggregator_cron_queue_info() {
 }
 
 /**
- * Implement hook_block_info().
+ * Implements hook_block_info().
  */
 function aggregator_block_info() {
   $block = array();
@@ -347,7 +356,7 @@ function aggregator_block_info() {
 }
 
 /**
- * Implement hook_block_configure().
+ * Implements hook_block_configure().
  */
 function aggregator_block_configure($delta = '') {
   list($type, $id) = explode('-', $delta);
@@ -364,7 +373,7 @@ function aggregator_block_configure($delta = '') {
 }
 
 /**
- * Implement hook_block_save().
+ * Implements hook_block_save().
  */
 function aggregator_block_save($delta = '', $edit = array()) {
   list($type, $id) = explode('-', $delta);
@@ -377,7 +386,7 @@ function aggregator_block_save($delta = '', $edit = array()) {
 }
 
 /**
- * Implement hook_block_view().
+ * Implements hook_block_view().
  *
  * Generates blocks for the latest news items in each category and feed.
  */

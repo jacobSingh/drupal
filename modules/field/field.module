@@ -1,5 +1,5 @@
 <?php
-// $Id: field.module,v 1.47 2009-10-31 18:00:48 dries Exp $
+// $Id: field.module,v 1.51 2009-12-04 16:49:46 dries Exp $
 /**
  * @file
  * Attach custom data fields to Drupal objects.
@@ -57,7 +57,7 @@ module_load_include('inc', 'field', 'field.form');
  *   pluggable back-end storage system for actual field data. The
  *   default implementation, field_sql_storage.module, stores field data
  *   in the local SQL database.
-
+ *
  * - @link field_purge Field API bulk data deletion @endlink. Cleans
  *   up after bulk deletion operations such as field_delete_field()
  *   and field_delete_instance().
@@ -68,13 +68,6 @@ module_load_include('inc', 'field', 'field.form');
  * unlimited number of values.
  */
 define('FIELD_CARDINALITY_UNLIMITED', -1);
-
-/**
- * The language code assigned to untranslatable fields.
- *
- * Defined by ISO639-2 for "No linguistic content / Not applicable".
- */
-define('FIELD_LANGUAGE_NONE', 'zxx');
 
 /**
  * TODO
@@ -136,25 +129,45 @@ class FieldException extends Exception {}
 class FieldUpdateForbiddenException extends FieldException {}
 
 /**
- * Implement hook_flush_caches.
+ * Implements hook_flush_caches().
  */
 function field_flush_caches() {
   return array('cache_field');
 }
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function field_help($path, $arg) {
   switch ($path) {
     case 'admin/help#field':
-      $output = '<p>' . t('The Field API allows custom data fields to be attached to Drupal objects and takes care of storing, loading, editing, and rendering field data. Any object type (node, user, etc.) can use the Field API to make itself "fieldable" and thus allow fields to be attached to it.') . '</p>';
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Field module allows custom data fields to be attached to Drupal <em>objects</em> (content nodes, users, taxonomy vocabularies, etc.) and takes care of storing, loading, editing, and rendering field data. Most users will not interact with the Field module directly, but will instead use the <a href="@field-ui-help">Field UI module</a> user interface. Module developers can use the Field API to make new objects "fieldable" and thus allow fields to be attached to their objects. For more information, see the online handbook entry for <a href="@field">Field module</a>.', array('@field-ui-help' => url('admin/help/field_ui'), '@field' => 'http://drupal.org/handbook/modules/field')) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Enabling field types') . '</dt>';
+      $output .= '<dd>' . t('The Field module provides the infrastructure for fields and field attachment, but the field types themselves are provided by additional modules. Some of the modules are required; the optional modules can be enabled from the <a href="@modules">Modules administration page</a>. Drupal core includes the following field type modules:', array('@modules' => url('admin/config/modules')));
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Number (required)') . '</dt>';
+      $output .= '<dd>' . t('Fields for storing numbers, in integer, decimal or floating point form. You may define a set of allowed inputs, or specify an allowable range of values. Several common formats for displaying numeric data are available.') . '</dd>';
+      $output .= '<dt>' . t('Text (required)') . '</dt>';
+      $output .= '<dd>' . t( "Fields for storing text. A text field may contain plain text only, or optionally, may use Drupal's input format filters to securely manage HTML output. Text input fields may be either a single line (text field), multiple lines (text area), or for greater input control, a select box, checkbox, or radio buttons. If desired, the field can be validated, so that it is limited to a set of allowed values.") . '</dd>';
+      $output .= '<dt>' . t('List (required)') . '</dt>';
+      $output .= '<dd>' . t('Fields for storing a list of items. Usually these items are inputted through a select list, checkboxes, or radio buttons.') . '</dd>';
+      $output .= '<dt>' . t('Image') . '</dt>';
+      $output .= '<dd>' . t('Fields for storing images.') . '</dd>';
+      $output .= '<dt>' . t('File') . '</dt>';
+      $output .= '<dd>' . t('Fields for attaching files to content.') . '</dd>';
+      $output .= '</dl></dd>';
+      $output .= '<dd>' . t('Additional fields may be provided by contributed modules, which you can find in the <a href="@contrib">contributed module section of drupal.org</a>.', array('@contrib' => 'http://drupal.org/project/modules')) . '</dd>';
+      $output .= '</dl>';
       return $output;
   }
 }
 
 /**
- * Implement hook_theme().
+ * Implements hook_theme().
  */
 function field_theme() {
   $path = drupal_get_path('module', 'field') . '/theme';
@@ -181,7 +194,7 @@ function field_theme() {
 }
 
 /**
- * Implement hook_cron().
+ * Implements hook_cron().
  *
  * Purges some deleted Field API data, if any exists.
  */
@@ -191,14 +204,14 @@ function field_cron() {
 }
 
 /**
- * Implement hook_modules_installed().
+ * Implements hook_modules_installed().
  */
 function field_modules_installed($modules) {
   field_cache_clear();
 }
 
 /**
- * Implement hook_modules_uninstalled().
+ * Implements hook_modules_uninstalled().
  */
 function field_modules_uninstalled($modules) {
   module_load_include('inc', 'field', 'field.crud');
@@ -209,7 +222,7 @@ function field_modules_uninstalled($modules) {
 }
 
 /**
- * Implement hook_modules_enabled().
+ * Implements hook_modules_enabled().
  */
 function field_modules_enabled($modules) {
   foreach ($modules as $module) {
@@ -219,7 +232,7 @@ function field_modules_enabled($modules) {
 }
 
 /**
- * Implement hook_modules_disabled().
+ * Implements hook_modules_disabled().
  */
 function field_modules_disabled($modules) {
   foreach ($modules as $module) {
@@ -680,9 +693,17 @@ function template_preprocess_field(&$variables) {
   $field_type_css = strtr($field['type'], '_', '-');
   $field_name_css = strtr($field['field_name'], '_', '-');
 
-  // If the formatter is multiple, the template sees only one 'item', which
-  // will include all values.
-  $items = $element['#formatter_single'] ? $element['items'] : array($element['items']);
+  // Prepare an $items variable that the template can simply loop on.
+  if ($element['#formatter_single']) {
+    // Filter out non-children properties that might have been added if the
+    // renderable array has gone through form_builder().
+    $items = array_intersect_key($element['items'], array_flip(element_children($element['items'])));
+  }
+  else {
+    // If the formatter is multiple, the template sees only one 'item', which
+    // will include all values.
+    $items = array($element['items']);
+  }
 
   $additions = array(
     'object' => $element['#object'],

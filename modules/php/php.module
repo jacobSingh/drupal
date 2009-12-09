@@ -1,5 +1,5 @@
 <?php
-// $Id: php.module,v 1.22 2009-11-01 21:26:44 webchick Exp $
+// $Id: php.module,v 1.24 2009-12-04 16:49:47 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function php_help($path, $arg) {
   switch ($path) {
@@ -21,13 +21,13 @@ function php_help($path, $arg) {
 }
 
 /**
- * Implement hook_permission().
+ * Implements hook_permission().
  */
 function php_permission() {
   return array(
     'use PHP for settings' => array(
       'title' => t('Use PHP for settings'),
-      'description' => t('Enter PHP in settings fields where PHP is allowed. %warning', array('%warning' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
+      'description' => theme('placeholder', array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
     ),
   );
 }
@@ -120,7 +120,7 @@ else {
 }
 
 /**
- * Implement hook_filter_info().
+ * Implements hook_filter_info().
  *
  * Provide PHP code filter. Use with care.
  */

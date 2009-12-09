@@ -1,5 +1,5 @@
 <?php
-// $Id: cache.inc,v 1.40 2009-09-13 17:49:51 dries Exp $
+// $Id: cache.inc,v 1.42 2009-12-04 16:31:04 dries Exp $
 
 /**
  * Get the cache object for a cache bin.
@@ -12,6 +12,8 @@
  *
  * @param $bin
  *   The cache bin for which the cache object should be returned.
+ * @return DrupalCacheInterface
+ *   The cache object associated with the specified bin.
  */
 function _cache_get_object($bin) {
   // We do not use drupal_static() here because we do not want to change the
@@ -36,9 +38,10 @@ function _cache_get_object($bin) {
  *   The cache ID of the data to retrieve.
  * @param $bin
  *   The cache bin to store the data in. Valid core values are 'cache_block',
- *   'cache_field', 'cache_filter', 'cache_form', 'cache_menu', 'cache_page',
- *   'cache_path', 'cache_registry', 'cache_update' or 'cache' for the default
- *   cache.
+ *   'cache_bootstrap', 'cache_field', 'cache_filter', 'cache_form',
+ *   'cache_menu', 'cache_page', 'cache_path', 'cache_update' or 'cache' for
+ *   the default cache.
+ *
  * @return The cache or FALSE on failure.
  */
 function cache_get($cid, $bin = 'cache') {
@@ -117,8 +120,8 @@ function cache_get_multiple(array &$cids, $bin = 'cache') {
  *   Strings will be stored as plain text and not serialized.
  * @param $bin
  *   The cache bin to store the data in. Valid core values are 'cache_block',
- *   'cache_field', 'cache_filter', 'cache_form', 'cache_menu', 'cache_page',
- *   'cache_path', 'cache_registry', 'cache_update' or 'cache' for the default
+ *   'cache_bootstrap', 'cache_field', 'cache_filter', 'cache_form',
+ *   'cache_menu', 'cache_page', 'cache_update' or 'cache' for the default
  *   cache.
  * @param $expire
  *   One of the following values:

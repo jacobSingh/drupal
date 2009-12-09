@@ -1,5 +1,5 @@
 <?php
-// $Id: shortcut.admin.inc,v 1.1 2009-10-17 00:51:52 dries Exp $
+// $Id: shortcut.admin.inc,v 1.3 2009-12-02 15:09:16 dries Exp $
 
 /**
  * @file
@@ -133,25 +133,6 @@ function shortcut_set_switch_submit($form, &$form_state) {
 }
 
 /**
- * Theme function for the form that switches shortcut sets.
- *
- * @param $variables
- *   An associative array containing:
- *   - form: An array representing the form.
- * @return
- *   A themed HTML string representing the content of the form.
- *
- * @ingroup themeable
- * @see shortcut_set_switch()
- */
-function theme_shortcut_set_switch($variables) {
-  $form = $variables['form'];
-  // Render the textfield for adding a new set inline with the radio button.
-  $form['set']['new']['#title'] = t('New set: !textfield', array('!textfield' => drupal_render($form['new'])));
-  return drupal_render_children($form);
-}
-
-/**
  * Menu callback; Build the form for customizing shortcut sets.
  *
  * @param $form
@@ -175,7 +156,9 @@ function shortcut_set_customize($form, &$form_state, $shortcut_set) {
   );
 
   $form['change_set'] = array(
-    '#markup' => l(t('Change set'), 'admin/config/system/shortcut'),
+    '#type' => 'link',
+    '#title' => t('Change set'),
+    '#href' => 'admin/config/system/shortcut',
     '#prefix' => '<div class="shortcuts-change-set"> (',
     '#suffix' => ')</div>',
     '#weight' => -99,

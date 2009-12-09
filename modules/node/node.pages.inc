@@ -1,5 +1,5 @@
 <?php
-// $Id: node.pages.inc,v 1.99 2009-11-02 04:45:28 webchick Exp $
+// $Id: node.pages.inc,v 1.103 2009-12-02 19:26:22 dries Exp $
 
 /**
  * @file
@@ -10,9 +10,9 @@
 /**
  * Menu callback; presents the node editing form, or redirects to delete confirmation.
  */
-function node_page_edit(stdClass $node) {
+function node_page_edit($node) {
   $type_name = node_type_get_name($node);
-  drupal_set_title(t('<em>Edit @type</em> @title', array('@type' => $type_name, '@title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'])), PASS_THROUGH);
+  drupal_set_title(t('<em>Edit @type</em> @title', array('@type' => $type_name, '@title' => $node->title[LANGUAGE_NONE][0]['value'])), PASS_THROUGH);
   return drupal_get_form($node->type . '_node_form', $node);
 }
 
@@ -62,7 +62,7 @@ function node_add($type) {
   // If a node type has been specified, validate its existence.
   if (isset($types[$type])) {
     // Initialize settings:
-    $node = (object)array('uid' => $user->uid, 'name' => (isset($user->name) ? $user->name : ''), 'type' => $type, 'language' => '');
+    $node = (object)array('uid' => $user->uid, 'name' => (isset($user->name) ? $user->name : ''), 'type' => $type, 'language' => LANGUAGE_NONE);
 
     drupal_set_title(t('Create @name', array('@name' => $types[$type]->name)), PASS_THROUGH);
     $output = drupal_get_form($type . '_node_form', $node);
@@ -80,7 +80,7 @@ function node_form_validate($form, &$form_state) {
   field_attach_form_validate('node', $node, $form, $form_state);
 }
 
-function node_object_prepare(stdClass $node) {
+function node_object_prepare($node) {
   // Set up default values, if required.
   $node_options = variable_get('node_options_' . $node->type, array('status', 'promote'));
   // If this is a new node, fill in the default values.
@@ -107,8 +107,12 @@ function node_object_prepare(stdClass $node) {
 /**
  * Generate the node add/edit form array.
  */
-function node_form($form, &$form_state, stdClass $node) {
+function node_form($form, &$form_state, $node) {
   global $user;
+  // This form has its own multistep persistance.
+  if ($form_state['rebuild']) {
+    $form_state['input'] = array();
+  }
 
   if (isset($form_state['node'])) {
     $node = (object)($form_state['node'] + (array)$node);
@@ -339,7 +343,7 @@ function theme_node_form($variables) {
 /**
  * Generate a node preview.
  */
-function node_preview(stdClass $node) {
+function node_preview($node) {
   if (node_access('create', $node) || node_access('update', $node)) {
     _field_invoke_multiple('load', 'node', array($node->nid => $node));
     // Load the user's name when needed.
@@ -417,8 +421,8 @@ function node_form_submit($form, &$form_state) {
   $insert = empty($node->nid);
   node_save($node);
   $node_link = l(t('view'), 'node/' . $node->nid);
-  $watchdog_args = array('@type' => $node->type, '%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value']);
-  $t_args = array('@type' => node_type_get_name($node), '%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value']);
+  $watchdog_args = array('@type' => $node->type, '%title' => $node->title[LANGUAGE_NONE][0]['value']);
+  $t_args = array('@type' => node_type_get_name($node), '%title' => $node->title[LANGUAGE_NONE][0]['value']);
 
   if ($insert) {
     watchdog('content', '@type: added %title.', $watchdog_args, WATCHDOG_NOTICE, $node_link);
@@ -430,6 +434,7 @@ function node_form_submit($form, &$form_state) {
   }
   if ($node->nid) {
     unset($form_state['rebuild']);
+    $form_state['values']['nid'] = $node->nid;
     $form_state['nid'] = $node->nid;
     $form_state['redirect'] = 'node/' . $node->nid;
   }
@@ -460,14 +465,14 @@ function node_form_submit_build_node($form, &$form_state) {
 /**
  * Menu callback -- ask for confirmation of node deletion
  */
-function node_delete_confirm($form, &$form_state, stdClass $node) {
+function node_delete_confirm($form, &$form_state, $node) {
   $form['nid'] = array(
     '#type' => 'value',
     '#value' => $node->nid,
   );
 
   return confirm_form($form,
-    t('Are you sure you want to delete %title?', array('%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'])),
+    t('Are you sure you want to delete %title?', array('%title' => $node->title[LANGUAGE_NONE][0]['value'])),
     'node/' . $node->nid,
     t('This action cannot be undone.'),
     t('Delete'),
@@ -482,8 +487,8 @@ function node_delete_confirm_submit($form, &$form_state) {
   if ($form_state['values']['confirm']) {
     $node = node_load($form_state['values']['nid']);
     node_delete($form_state['values']['nid']);
-    watchdog('content', '@type: deleted %title.', array('@type' => $node->type, '%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value']));
-    drupal_set_message(t('@type %title has been deleted.', array('@type' => node_type_get_name($node), '%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'])));
+    watchdog('content', '@type: deleted %title.', array('@type' => $node->type, '%title' => $node->title[LANGUAGE_NONE][0]['value']));
+    drupal_set_message(t('@type %title has been deleted.', array('@type' => node_type_get_name($node), '%title' => $node->title[LANGUAGE_NONE][0]['value'])));
   }
 
   $form_state['redirect'] = '<front>';
@@ -492,8 +497,8 @@ function node_delete_confirm_submit($form, &$form_state) {
 /**
  * Generate an overview table of older revisions of a node.
  */
-function node_revision_overview(stdClass $node) {
-  drupal_set_title(t('Revisions for %title', array('%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'])), PASS_THROUGH);
+function node_revision_overview($node) {
+  drupal_set_title(t('Revisions for %title', array('%title' => $node->title[LANGUAGE_NONE][0]['value'])), PASS_THROUGH);
 
   $header = array(t('Revision'), array('data' => t('Operations'), 'colspan' => 2));
 
@@ -555,8 +560,8 @@ function node_revision_revert_confirm_submit($form, &$form_state) {
 
   node_save($node_revision);
 
-  watchdog('content', '@type: reverted %title revision %revision.', array('@type' => $node_revision->type, '%title' => $node_revision->title[FIELD_LANGUAGE_NONE][0]['value'], '%revision' => $node_revision->vid));
-  drupal_set_message(t('@type %title has been reverted back to the revision from %revision-date.', array('@type' => node_type_get_name($node_revision), '%title' => $node_revision->title[FIELD_LANGUAGE_NONE][0]['value'], '%revision-date' => format_date($node_revision->revision_timestamp))));
+  watchdog('content', '@type: reverted %title revision %revision.', array('@type' => $node_revision->type, '%title' => $node_revision->title[LANGUAGE_NONE][0]['value'], '%revision' => $node_revision->vid));
+  drupal_set_message(t('@type %title has been reverted back to the revision from %revision-date.', array('@type' => node_type_get_name($node_revision), '%title' => $node_revision->title[LANGUAGE_NONE][0]['value'], '%revision-date' => format_date($node_revision->revision_timestamp))));
   $form_state['redirect'] = 'node/' . $node_revision->nid . '/revisions';
 }
 
@@ -569,8 +574,8 @@ function node_revision_delete_confirm_submit($form, &$form_state) {
   $node_revision = $form['#node_revision'];
   node_revision_delete($node_revision->vid);
 
-  watchdog('content', '@type: deleted %title revision %revision.', array('@type' => $node_revision->type, '%title' => $node_revision->title[FIELD_LANGUAGE_NONE][0]['value'], '%revision' => $node_revision->vid));
-  drupal_set_message(t('Revision from %revision-date of @type %title has been deleted.', array('%revision-date' => format_date($node_revision->revision_timestamp), '@type' => node_type_get_name($node_revision), '%title' => $node_revision->title[FIELD_LANGUAGE_NONE][0]['value'])));
+  watchdog('content', '@type: deleted %title revision %revision.', array('@type' => $node_revision->type, '%title' => $node_revision->title[LANGUAGE_NONE][0]['value'], '%revision' => $node_revision->vid));
+  drupal_set_message(t('Revision from %revision-date of @type %title has been deleted.', array('%revision-date' => format_date($node_revision->revision_timestamp), '@type' => node_type_get_name($node_revision), '%title' => $node_revision->title[LANGUAGE_NONE][0]['value'])));
   $form_state['redirect'] = 'node/' . $node_revision->nid;
   if (db_query('SELECT COUNT(vid) FROM {node_revision} WHERE nid = :nid', array(':nid' => $node_revision->nid))->fetchField() > 1) {
     $form_state['redirect'] .= '/revisions';

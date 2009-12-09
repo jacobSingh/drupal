@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.220 2009-10-27 06:07:38 webchick Exp $
+// $Id: install.php,v 1.225 2009-11-29 19:50:24 webchick Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -251,11 +251,9 @@ function install_begin_request(&$install_state) {
 
   include_once DRUPAL_ROOT . '/includes/entity.inc';
   $module_list['system']['filename'] = 'modules/system/system.module';
-  $module_list['filter']['filename'] = 'modules/filter/filter.module';
   $module_list['user']['filename'] = 'modules/user/user.module';
   module_list(TRUE, FALSE, FALSE, $module_list);
   drupal_load('module', 'system');
-  drupal_load('module', 'filter');
   drupal_load('module', 'user');
 
   // Load the cache infrastructure using a "fake" cache implementation that
@@ -394,7 +392,7 @@ function install_run_task($task, &$install_state) {
         // We need to pass $install_state by reference in order for forms to
         // modify it, since the form API will use it in call_user_func_array(),
         // which requires that referenced variables be passed explicitly.
-        'args' => array(&$install_state),
+        'build_info' => array('args' => array(&$install_state)),
         'no_redirect' => TRUE,
       );
       $form = drupal_build_form($function, $form_state);
@@ -1153,6 +1151,16 @@ function install_select_locale(&$install_state) {
   $profilename = $install_state['parameters']['profile'];
   $locales = install_find_locales($profilename);
   $install_state['locales'] += $locales;
+
+  if (!empty($_POST['locale'])) {
+    foreach ($locales as $locale) {
+      if ($_POST['locale'] == $locale->name) {
+        $install_state['parameters']['locale'] = $locale->name;
+        return;
+      }
+    }
+  }
+
   if (empty($install_state['parameters']['locale'])) {
     // If only the built-in (English) language is available, and we are using
     // the default profile and performing an interactive installation, inform
@@ -1171,7 +1179,8 @@ function install_select_locale(&$install_state) {
           $output .= '<ul><li><a href="install.php?profile=' . $profilename . '&amp;locale=en">' . st('Continue installation in English') . '</a></li><li><a href="install.php?profile=' . $profilename . '">' . st('Return to choose a language') . '</a></li></ul>';
         }
         else {
-          $output = '<ul><li><a href="install.php?profile=' . $profilename . '&amp;locale=en">' . st('Install Drupal in English') . '</a></li><li><a href="install.php?profile=' . $profilename . '&amp;localize=true">' . st('Learn how to install Drupal in other languages') . '</a></li></ul>';
+          include_once DRUPAL_ROOT . '/includes/form.inc';
+          $output = drupal_render(drupal_get_form('install_select_locale_form', $locales, $profilename));
         }
         return $output;
       }
@@ -1196,15 +1205,6 @@ function install_select_locale(&$install_state) {
         }
       }
 
-      if (!empty($_POST['locale'])) {
-        foreach ($locales as $locale) {
-          if ($_POST['locale'] == $locale->name) {
-            $install_state['parameters']['locale'] = $locale->name;
-            return;
-          }
-        }
-      }
-
       // We still don't have a locale, so display a form for selecting one.
       // Only do this in the case of interactive installations, since this is
       // not a real form with submit handlers (the database isn't even set up
@@ -1213,7 +1213,7 @@ function install_select_locale(&$install_state) {
       if ($install_state['interactive']) {
         drupal_set_title(st('Choose language'));
         include_once DRUPAL_ROOT . '/includes/form.inc';
-        return drupal_render(drupal_get_form('install_select_locale_form', $locales));
+        return drupal_render(drupal_get_form('install_select_locale_form', $locales, $profilename));
       }
       else {
         throw new Exception(st('Sorry, you must select a language to continue the installation.'));
@@ -1225,7 +1225,7 @@ function install_select_locale(&$install_state) {
 /**
  * Form API array definition for language selection.
  */
-function install_select_locale_form($form, &$form_state, $locales) {
+function install_select_locale_form($form, &$form_state, $locales, $profilename = 'default') {
   include_once DRUPAL_ROOT . '/includes/iso.inc';
   $languages = _locale_get_predefined_list();
   foreach ($locales as $locale) {
@@ -1237,14 +1237,19 @@ function install_select_locale_form($form, &$form_state, $locales) {
     $form['locale'][$locale->name] = array(
       '#type' => 'radio',
       '#return_value' => $locale->name,
-      '#default_value' => $locale->name == 'en',
+      '#default_value' => $locale->name == 'en' ? 'en' : '',
       '#title' => $name . ($locale->name == 'en' ? ' ' . st('(built-in)') : ''),
       '#parents' => array('locale')
     );
   }
+  if ($profilename == 'default') {
+    $form['help'] = array(
+      '#markup' => '<p><a href="install.php?profile=' . $profilename . '&amp;localize=true">' . st('Learn how to install Drupal in other languages') . '</a></p>',
+    );
+  }
   $form['submit'] =  array(
     '#type' => 'submit',
-    '#value' => st('Select language'),
+    '#value' => st('Save and continue'),
   );
   return $form;
 }
@@ -1377,8 +1382,6 @@ function install_configure_form($form, &$form_state, &$install_state) {
     drupal_set_message(st('All necessary changes to %dir and %file have been made. They have been set to read-only for security.', array('%dir' => $settings_dir, '%file' => $settings_file)));
   }
 
-  // Add JavaScript validation.
-  _user_password_dynamic_validation();
   drupal_add_js(drupal_get_path('module', 'system') . '/system.js');
   // Add JavaScript time zone detection.
   drupal_add_js('misc/timezone.js');
@@ -1435,11 +1438,8 @@ function install_import_locales_remaining(&$install_state) {
 function install_finished(&$install_state) {
   drupal_set_title(st('@drupal installation complete', array('@drupal' => drupal_install_profile_name())), PASS_THROUGH);
   $messages = drupal_set_message();
-  $output = '<p>' . st('Congratulations, @drupal has been successfully installed.', array('@drupal' => drupal_install_profile_name())) . '</p>';
-  $output .= '<p>' . (isset($messages['error']) ? st('Review the messages above before continuing on to <a href="@url">your new site</a>.', array('@url' => url(''))) : st('You may now visit <a href="@url">your new site</a>.', array('@url' => url('')))) . '</p>';
-  if (module_exists('help')) {
-    $output .= '<p>' . st('For more information on configuring Drupal, refer to the <a href="@help">help section</a>.', array('@help' => url('admin/help'))) . '</p>';
-  }
+  $output = '<p>' . st('Congratulations, you installed @drupal!', array('@drupal' => drupal_install_profile_name())) . '</p>';
+  $output .= '<p>' . (isset($messages['error']) ? st('Review the messages above before visiting <a href="@url">your new site</a>.', array('@url' => url(''))) : st('<a href="@url">Visit your new site</a>.', array('@url' => url('')))) . '</p>';
 
   // Rebuild the module and theme data, in case any newly-installed modules
   // need to modify it via hook_system_info_alter(). We need to clear the

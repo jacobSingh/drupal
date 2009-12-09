@@ -1,5 +1,5 @@
 <?php
-// $Id: field_ui.module,v 1.14 2009-10-31 16:06:36 dries Exp $
+// $Id: field_ui.module,v 1.17 2009-12-04 16:49:46 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function field_ui_help($path, $arg) {
   switch ($path) {
@@ -29,7 +29,7 @@ function field_ui_help($path, $arg) {
 }
 
 /**
- * Implement hook_menu().
+ * Implements hook_menu().
  */
 function field_ui_menu() {
   $items['admin/reports/fields'] = array(
@@ -152,7 +152,7 @@ function field_ui_menu_label($instance) {
 }
 
 /**
- * Implement hook_theme().
+ * Implements hook_theme().
  */
 function field_ui_theme() {
   return array(
@@ -203,7 +203,7 @@ function field_ui_build_modes_tabs($obj_type, $tab_selector = NULL) {
 }
 
 /**
- * Implement hook_field_ui_build_modes_tabs() on behalf of other core modules.
+ * Implements hook_field_ui_build_modes_tabs() on behalf of other core modules.
  *
  * @return
  *   An array describing the build modes defined by the module, grouped by tabs.
@@ -245,7 +245,7 @@ function field_ui_field_ui_build_modes_tabs() {
 }
 
 /**
- * Implement hook_field_attach_create_bundle().
+ * Implements hook_field_attach_create_bundle().
  */
 function field_ui_field_attach_create_bundle($bundle) {
   // When a new bundle is created, the menu needs to be rebuilt to add our
@@ -254,7 +254,7 @@ function field_ui_field_attach_create_bundle($bundle) {
 }
 
 /**
- * Implement hook_field_attach_rename_bundle().
+ * Implements hook_field_attach_rename_bundle().
  */
 function field_ui_field_attach_rename_bundle($bundle_old, $bundle_new) {
   if ($bundle_old !== $bundle_new && $extra = variable_get("field_extra_weights_$bundle_old", array())) {
@@ -264,7 +264,7 @@ function field_ui_field_attach_rename_bundle($bundle_old, $bundle_new) {
 }
 
 /**
- * Implement hook_field_attach_delete_bundle().
+ * Implements hook_field_attach_delete_bundle().
  */
 function field_ui_field_attach_delete_bundle($bundle) {
   variable_del('field_extra_weights_' . $bundle);
@@ -305,3 +305,28 @@ function field_ui_inactive_instances($obj_type, $bundle_name = NULL) {
   }
   return $inactive;
 }
+
+/**
+ * Add a button Save and add fields to Create content type form.
+ */
+function field_ui_form_node_type_form_alter(&$form, $form_state) {
+  // We want to display the button only on add page.
+  if (empty($form['#node_type']->type)) {
+    $form['save_continue'] = array(
+      '#type' => 'submit',
+      '#value' => t('Save and add fields'),
+      '#weight' => 45,
+    );
+    $form['#submit'][] = 'field_ui_form_node_type_form_submit';
+  }
+}
+
+/**
+ * Redirect to manage fields form.
+ */
+function field_ui_form_node_type_form_submit($form, &$form_state) {
+  if ($form_state['clicked_button']['#parents'][0] === 'save_continue') {
+    $form_state['redirect'] = _field_ui_bundle_admin_path('node', $form_state['values']['type']) .'/fields';
+  }
+}
+

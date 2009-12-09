@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.install,v 1.23 2009-10-16 19:06:23 dries Exp $
+// $Id: filter.install,v 1.26 2009-12-04 16:49:46 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_schema().
+ * Implements hook_schema().
  */
 function filter_schema() {
   $schema['filter'] = array(
@@ -59,7 +59,7 @@ function filter_schema() {
       'fmn' => array('format', 'module', 'name'),
     ),
     'indexes' => array(
-      'list' => array('format', 'weight', 'module', 'name'),
+      'list' => array('weight', 'module', 'name'),
     ),
   );
   $schema['filter_format'] = array(
@@ -97,6 +97,9 @@ function filter_schema() {
     'unique keys' => array(
       'name' => array('name'),
     ),
+    'indexes' => array(
+      'weight' => array('weight'),
+    ),
   );
 
   $schema['cache_filter'] = drupal_get_schema_unprocessed('system', 'cache');
@@ -115,6 +118,7 @@ function filter_schema() {
  */
 function filter_update_7000() {
   db_add_field('filter_formats', 'weight', array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'size' => 'tiny'));
+  db_add_index('filter_formats', 'weight', array('weight'));
 }
 
 /**
@@ -344,6 +348,14 @@ function filter_update_7005() {
   // We do not delete the 'filter_default_format' variable, since other modules
   // may need it in their update functions.
   // @todo This variable can be deleted in Drupal 8.
+}
+
+/**
+ * Remove the 'format' column from 'list' index on {filter}.
+ */
+function filter_update_7006() {
+  db_drop_index('filter', 'list');
+  db_add_index('filter', 'list', array('weight', 'module', 'name'));
 }
 
 /**

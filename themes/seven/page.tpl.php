@@ -1,10 +1,11 @@
 <?php
-// $Id: page.tpl.php,v 1.6 2009-10-17 01:15:40 webchick Exp $
+// $Id: page.tpl.php,v 1.9 2009-11-22 23:44:09 webchick Exp $
 ?>
+  <a name="main-content" id="main-content"></a>
   <div id="branding" class="clearfix">
     <?php print $breadcrumb; ?>
     <?php if ($title): ?><h1 class="page-title"><?php print $title; ?></h1><?php endif; ?>
-    <?php if (isset($add_to_shortcuts)): ?><?php print $add_to_shortcuts; ?><?php endif; ?>
+    <?php if (isset($add_or_remove_shortcut)): ?><?php print $add_or_remove_shortcut; ?><?php endif; ?>
     <?php if ($primary_local_tasks): ?><ul class="tabs primary"><?php print render($primary_local_tasks); ?></ul><?php endif; ?>
   </div>
 
@@ -12,7 +13,7 @@
     <?php if ($secondary_local_tasks): ?><ul class="tabs secondary"><?php print render($secondary_local_tasks); ?></ul><?php endif; ?>
 
     <div id="content" class="clearfix">
-      <?php if ($show_messages && $messages): ?>
+      <?php if ($messages): ?>
         <div id="console" class="clearfix"><?php print $messages; ?></div>
       <?php endif; ?>
       <?php if ($page['help']): ?>

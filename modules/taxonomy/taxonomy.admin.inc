@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.admin.inc,v 1.81 2009-11-03 05:27:18 webchick Exp $
+// $Id: taxonomy.admin.inc,v 1.86 2009-12-02 14:56:32 dries Exp $
 
 /**
  * @file
@@ -20,9 +20,9 @@ function taxonomy_overview_vocabularies($form) {
     $form[$vocabulary->vid]['#vocabulary'] = $vocabulary;
     $form[$vocabulary->vid]['name'] = array('#markup' => check_plain($vocabulary->name));
     $form[$vocabulary->vid]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $vocabulary->weight);
-    $form[$vocabulary->vid]['edit'] = array('#type' => 'link', '#title' => t('edit vocabulary'), '#href' => "admin/structure/taxonomy/$vocabulary->vid");
-    $form[$vocabulary->vid]['list'] = array('#type' => 'link', '#title' => t('list terms'), '#href' => "admin/structure/taxonomy/$vocabulary->vid/list");
-    $form[$vocabulary->vid]['add'] = array('#type' => 'link', '#title' => t('add terms'), '#href' => "admin/structure/taxonomy/$vocabulary->vid/list/add");
+    $form[$vocabulary->vid]['edit'] = array('#type' => 'link', '#title' => t('edit vocabulary'), '#href' => "admin/structure/taxonomy/$vocabulary->vid/edit");
+    $form[$vocabulary->vid]['list'] = array('#type' => 'link', '#title' => t('list terms'), '#href' => "admin/structure/taxonomy/$vocabulary->vid");
+    $form[$vocabulary->vid]['add'] = array('#type' => 'link', '#title' => t('add terms'), '#href' => "admin/structure/taxonomy/$vocabulary->vid/add");
   }
 
   // Only make this form include a submit button and weight if more than one
@@ -48,6 +48,7 @@ function taxonomy_overview_vocabularies_submit($form, &$form_state) {
       taxonomy_vocabulary_save($form[$vid]['#vocabulary']);
     }
   }
+  drupal_set_message(t('Your configuration has been saved.'));
 }
 
 /**
@@ -78,17 +79,13 @@ function theme_taxonomy_overview_vocabularies($variables) {
     }
   }
 
-  if (empty($rows)) {
-    $rows[] = array(array('data' => t('No vocabularies available. <a href="@link">Add vocabulary</a>.', array('@link' => url('admin/structure/taxonomy/add'))), 'colspan' => '5'));
-  }
-
   $header = array(t('Vocabulary name'));
   if (isset($form['submit'])) {
     $header[] = t('Weight');
     drupal_add_tabledrag('taxonomy', 'order', 'sibling', 'vocabulary-weight');
   }
   $header[] = array('data' => t('Operations'), 'colspan' => '3');
-  return theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'taxonomy'))) . drupal_render_children($form);
+  return theme('table', array('header' => $header, 'rows' => $rows, 'empty' => t('No vocabularies available.'),'attributes' => array('id' => 'taxonomy'))) . drupal_render_children($form);
 }
 
 /**
@@ -212,17 +209,18 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
   switch (taxonomy_vocabulary_save($vocabulary)) {
     case SAVED_NEW:
       drupal_set_message(t('Created new vocabulary %name.', array('%name' => $vocabulary->name)));
-      watchdog('taxonomy', 'Created new vocabulary %name.', array('%name' => $vocabulary->name), WATCHDOG_NOTICE, l(t('edit'), 'admin/structure/taxonomy/' . $vocabulary->vid));
+      watchdog('taxonomy', 'Created new vocabulary %name.', array('%name' => $vocabulary->name), WATCHDOG_NOTICE, l(t('edit'), 'admin/structure/taxonomy/' . $vocabulary->vid . '/edit'));
       break;
+
     case SAVED_UPDATED:
       drupal_set_message(t('Updated vocabulary %name.', array('%name' => $vocabulary->name)));
-      watchdog('taxonomy', 'Updated vocabulary %name.', array('%name' => $vocabulary->name), WATCHDOG_NOTICE, l(t('edit'), 'admin/structure/taxonomy/' . $vocabulary->vid));
+      watchdog('taxonomy', 'Updated vocabulary %name.', array('%name' => $vocabulary->name), WATCHDOG_NOTICE, l(t('edit'), 'admin/structure/taxonomy/' . $vocabulary->vid . '/edit'));
       break;
   }
 
+  $form_state['values']['vid'] = $vocabulary->vid;
   $form_state['vid'] = $vocabulary->vid;
   $form_state['redirect'] = 'admin/structure/taxonomy';
-  return;
 }
 
 /**
@@ -380,7 +378,7 @@ function taxonomy_overview_terms($form, &$form_state, $vocabulary) {
   $form['#page_entries'] = $page_entries;
   $form['#back_peddle'] = $back_peddle;
   $form['#forward_peddle'] = $forward_peddle;
-  $form['#empty_text'] = t('No terms available. <a href="@link">Add term</a>.', array('@link' => url('admin/structure/taxonomy/' . $vocabulary->vid . '/list/add')));
+  $form['#empty_text'] = t('No terms available. <a href="@link">Add term</a>.', array('@link' => url('admin/structure/taxonomy/' . $vocabulary->vid . '/add')));
 
   if ($vocabulary->hierarchy < 2 && count($tree) > 1) {
     $form['submit'] = array(
@@ -511,6 +509,7 @@ function taxonomy_overview_terms_submit($form, &$form_state) {
     $vocabulary->hierarchy = $hierarchy;
     taxonomy_vocabulary_save($vocabulary);
   }
+  drupal_set_message(t('Your configuration has been saved.'));
 }
 
 /**
@@ -614,6 +613,7 @@ function taxonomy_form_term($form, &$form_state, $edit = array(), $vocabulary = 
   $edit += array(
     'name' => '',
     'description' => '',
+    'format' => filter_default_format(),
     'vocabulary_machine_name' => $vocabulary->machine_name,
     'tid' => NULL,
     'weight' => 0,
@@ -653,7 +653,9 @@ function taxonomy_form_term($form, &$form_state, $edit = array(), $vocabulary = 
     '#type' => 'textarea',
     '#title' => t('Description'),
     '#default_value' => $edit['description'],
-    '#description' => t('A description of the term. To be displayed on taxonomy/term pages and RSS feeds.'));
+    '#description' => t('A description of the term. To be displayed on taxonomy/term pages and RSS feeds.'),
+    '#text_format' => $edit['format'],
+  );
 
   $form['vocabulary_machine_name'] = array(
     '#type' => 'textfield',
@@ -698,7 +700,7 @@ function taxonomy_form_term($form, &$form_state, $edit = array(), $vocabulary = 
       '#default_value' => $parent,
       '#multiple' => TRUE,
     );
-    
+
   }
   $form['advanced']['weight'] = array(
     '#type' => 'textfield',
@@ -768,6 +770,10 @@ function taxonomy_form_term_submit($form, &$form_state) {
     return;
   }
 
+  // Massage #text_format.
+  $form_state['values']['format'] = $form_state['values']['description_format'];
+  unset($form_state['values']['description_format']);
+
   $term = taxonomy_form_term_submit_builder($form, $form_state);
 
   $status = taxonomy_term_save($term);
@@ -802,9 +808,9 @@ function taxonomy_form_term_submit($form, &$form_state) {
     taxonomy_vocabulary_save($form['#vocabulary']);
   }
 
+  $form_state['values']['tid'] = $term->tid;
   $form_state['tid'] = $term->tid;
   $form_state['redirect'] = 'admin/structure/taxonomy';
-  return;
 }
 
 /**

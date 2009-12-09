@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.tokens.inc,v 1.6 2009-10-16 20:40:05 dries Exp $
+// $Id: comment.tokens.inc,v 1.8 2009-12-04 16:49:46 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_token_info().
+ * Implements hook_token_info().
  */
 function comment_token_info() {
   $type = array(
@@ -108,7 +108,7 @@ function comment_token_info() {
 }
 
 /**
- * Implement hook_tokens().
+ * Implements hook_tokens().
  */
 function comment_tokens($type, $tokens, array $data = array(), array $options = array()) {
   $url_options = array('absolute' => TRUE);
@@ -209,7 +209,7 @@ function comment_tokens($type, $tokens, array $data = array(), array $options = 
 
         case 'node':
           $node = node_load($comment->nid);
-          $title = $node->title[FIELD_LANGUAGE_NONE][0]['value'];
+          $title = $node->title[LANGUAGE_NONE][0]['value'];
           $replacements[$original] = $sanitize ? filter_xss($title) : $title;
           break;
       }

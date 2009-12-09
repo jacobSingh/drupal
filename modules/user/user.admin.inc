@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.88 2009-11-03 05:27:18 webchick Exp $
+// $Id: user.admin.inc,v 1.91 2009-12-02 17:04:25 dries Exp $
 
 /**
  * @file
@@ -44,10 +44,17 @@ function user_filter_form() {
   );
   foreach ($session as $filter) {
     list($type, $value) = $filter;
-    // Merge an array of arrays into one if necessary.
-    $options = $type == 'permission' ? call_user_func_array('array_merge', $filters[$type]['options']) : $filters[$type]['options'];
-    $params = array('%property' => $filters[$type]['title'] , '%value' => $options[$value]);
-    if ($i++ > 0) {
+    if ($type == 'permission') {
+      // Merge arrays of module permissions into one.
+      // Slice past the first element '[any]' whose value is not an array.
+      $options = call_user_func_array('array_merge', array_slice($filters[$type]['options'], 1));
+      $value = $options[$value];
+    }
+    else {
+      $value = $filters[$type]['options'][$value];
+    }
+    $params = array('%property' => $filters[$type]['title'] , '%value' => $value);
+    if ($i++) {
       $form['filters']['current'][] = array('#markup' => t('<em>and</em> where <strong>%property</strong> is <strong>%value</strong>', $params));
     }
     else {
@@ -60,13 +67,11 @@ function user_filter_form() {
     $form['filters']['status'][$key] = array(
       '#type' => 'select',
       '#options' => $filter['options'],
+      '#title' => $filter['title'],
+      '#default_value' => '[any]',
     );
   }
 
-  $form['filters']['filter'] = array(
-    '#type' => 'radios',
-    '#options' => $names,
-  );
   $form['filters']['buttons']['submit'] = array(
     '#type' => 'submit',
     '#value' => (count($session) ? t('Refine') : t('Filter')),
@@ -94,13 +99,17 @@ function user_filter_form_submit($form, &$form_state) {
   $op = $form_state['values']['op'];
   $filters = user_filters();
   switch ($op) {
-    case t('Filter'): case t('Refine'):
-      if (isset($form_state['values']['filter'])) {
-        $filter = $form_state['values']['filter'];
-        // Merge an array of arrays into one if necessary.
-        $options = $filter == 'permission' ? call_user_func_array('array_merge', $filters[$filter]['options']) : $filters[$filter]['options'];
-        if (isset($options[$form_state['values'][$filter]])) {
-          $_SESSION['user_overview_filter'][] = array($filter, $form_state['values'][$filter]);
+    case t('Filter'):
+    case t('Refine'):
+      // Apply every filter that has a choice selected other than 'any'.
+      foreach ($filters as $filter => $options) {
+        if (isset($form_state['values'][$filter]) && $form_state['values'][$filter] != '[any]') {
+          // Merge an array of arrays into one if necessary.
+          $options = ($filter == 'permission') ? form_options_flatten($filters[$filter]['options']) : $filters[$filter]['options'];
+          // Only accept valid selections offered on the dropdown, block bad input.
+          if (isset($options[$form_state['values'][$filter]])) {
+            $_SESSION['user_overview_filter'][] = array($filter, $form_state['values'][$filter]);
+          }
         }
       }
       break;
@@ -185,17 +194,17 @@ function user_admin_account() {
       $users_roles[] = $roles[$user_role->rid];
     }
     asort($users_roles);
-    
+
     $options[$account->uid] = array(
       'username' => theme('username', array('account' => $account)),
       'status' =>  $status[$account->status],
       'roles' => theme('item_list', array('items' => $users_roles)),
       'member_for' => format_interval(REQUEST_TIME - $account->created),
       'access' =>  $account->access ? t('@time ago', array('@time' => format_interval(REQUEST_TIME - $account->access))) : t('never'),
-      'operations' => array('data' => array('#link' => array('title' => t('edit'), 'href' => "user/$account->uid/edit", 'query' => $destination))),
+      'operations' => array('data' => array('#type' => 'link', '#title' => t('edit'), '#href' => "user/$account->uid/edit", '#options' => array('query' => $destination))),
     );
   }
-  
+
   $form['accounts'] = array(
     '#type' => 'tableselect',
     '#header' => $header,
@@ -604,7 +613,7 @@ function user_admin_settings() {
   $form['email_canceled']['settings'] = array(
     '#type' => 'container',
     '#states' => array(
-      // Hide the settings when the cancel notify checkbox is disabled. 
+      // Hide the settings when the cancel notify checkbox is disabled.
       'invisible' => array(
         'input[name="user_mail_status_canceled_notify"]' => array('checked' => FALSE),
       ),
@@ -652,7 +661,16 @@ function user_admin_permissions($form, $form_state, $rid = NULL) {
   $options = array();
   $module_info = system_get_info('module');
   $hide_descriptions = !system_admin_compact_mode();
+
+  // Get a list of all the modules implementing a hook_permission() and sort by
+  // display name.
+  $modules = array();
   foreach (module_implements('permission') as $module) {
+    $modules[$module_info[$module]['name']] = $module;
+  }
+  ksort($modules);
+
+  foreach ($modules as $display_name => $module) {
     if ($permissions = module_invoke($module, 'permission')) {
       $form['permission'][] = array(
         '#markup' => $module_info[$module]['name'],
@@ -886,14 +904,11 @@ function theme_user_filters($variables) {
       $output .= '<li>' . drupal_render($form['current'][$key]) . '</li>';
     }
   }
+  $output .= '</ul>';
 
-  $output .= '<li><dl class="multiselect">' . (!empty($form['current']) ? '<dt><em>' . t('and') . '</em> ' . t('where') . '</dt>' : '') . '<dd class="a">';
-  foreach (element_children($form['filter']) as $key) {
-    $output .= drupal_render($form['filter'][$key]);
-  }
-  $output .= '</dd>';
+  $output .= '<dl class="multiselect">' . (!empty($form['current']) ? '<dt><em>' . t('and') . '</em> ' . t('where') . '</dt>' : '');
 
-  $output .= '<dt>' . t('is') . '</dt><dd class="b">';
+  $output .= '<dd>';
 
   foreach (element_children($form['status']) as $key) {
     $output .= drupal_render($form['status'][$key]);
@@ -902,7 +917,6 @@ function theme_user_filters($variables) {
 
   $output .= '</dl>';
   $output .= '<div class="container-inline" id="user-admin-buttons">' . drupal_render($form['buttons']) . '</div>';
-  $output .= '</li></ul>';
 
   return $output;
 }

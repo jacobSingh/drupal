@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.test,v 1.56 2009-10-24 04:23:51 webchick Exp $
+// $Id: taxonomy.test,v 1.63 2009-12-02 19:26:22 dries Exp $
 
 /**
  * @file
@@ -114,7 +114,7 @@ class TaxonomyVocabularyFunctionalTest extends TaxonomyWebTestCase {
       $edit[$key . '[weight]'] = $vocabulary->weight;
     }
     // Saving the new weights via the interface.
-    $this->drupalPost('admin/structure/taxonomy/', $edit, t('Save'));
+    $this->drupalPost('admin/structure/taxonomy', $edit, t('Save'));
 
     // Load the vocabularies from the database.
     $new_vocabularies = taxonomy_get_vocabularies();
@@ -162,7 +162,7 @@ class TaxonomyVocabularyFunctionalTest extends TaxonomyWebTestCase {
 
     // Delete the vocabulary.
     $edit = array();
-    $this->drupalPost('admin/structure/taxonomy/' . $vid, $edit, t('Delete'));
+    $this->drupalPost('admin/structure/taxonomy/' . $vid . '/edit', $edit, t('Delete'));
     $this->assertRaw(t('Are you sure you want to delete the vocabulary %name?', array('%name' => $vocabulary->name)), t('[confirm deletion] Asks for confirmation.'));
     $this->assertText(t('Deleting a vocabulary will delete all the terms in it. This action cannot be undone.'), t('[confirm deletion] Inform that all terms will be deleted.'));
 
@@ -378,10 +378,10 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
 
     // Post an article.
     $edit = array();
-    $langcode = FIELD_LANGUAGE_NONE;
+    $langcode = LANGUAGE_NONE;
     $edit["title[$langcode][0][value]"] = $this->randomName();
     $edit["body[$langcode][0][value]"] = $this->randomName();
-    $edit[$this->instance['field_name'] . '[' . $langcode .'][value][]'] = $term1->tid;
+    $edit[$this->instance['field_name'] . '[' . $langcode .'][]'] = $term1->tid;
     $this->drupalPost('node/add/article', $edit, t('Save'));
 
     // Check that the term is displayed when the node is viewed.
@@ -390,7 +390,7 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     $this->assertText($term1->name, t('Term is displayed when viewing the node.'));
 
     // Edit the node with a different term.
-    $edit[$this->instance['field_name'] . '[' . $langcode . '][value][]'] = $term2->tid;
+    $edit[$this->instance['field_name'] . '[' . $langcode . '][]'] = $term2->tid;
     $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));
 
     $this->drupalGet('node/' . $node->nid);
@@ -413,12 +413,12 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     );
 
     $edit = array();
-    $langcode = FIELD_LANGUAGE_NONE;
+    $langcode = LANGUAGE_NONE;
     $edit["title[$langcode][0][value]"] = $this->randomName();
     $edit["body[$langcode][0][value]"] = $this->randomName();
     // Insert the terms in a comma separated list. Vocabulary 1 is a
     // free-tagging field created by the default profile.
-    $edit[$instance['field_name'] . "[$langcode][value]"] = implode(', ', $terms);
+    $edit[$instance['field_name'] . "[$langcode]"] = implode(', ', $terms);
     $this->drupalPost('node/add/page', $edit, t('Save'));
     $this->assertRaw(t('@type %title has been created.', array('@type' => t('Page'), '%title' => $edit["title[$langcode][0][value]"])), t('The node was created successfully'));
     foreach ($terms as $term) {
@@ -439,20 +439,19 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     $edit['parent[]'] = array(0);
 
     // Create the term to edit.
-    $this->drupalPost('admin/structure/taxonomy/' . $this->vocabulary->vid . '/list/add', $edit, t('Save'));
+    $this->drupalPost('admin/structure/taxonomy/' . $this->vocabulary->vid . '/add', $edit, t('Save'));
 
     $term = reset(taxonomy_get_term_by_name($edit['name']));
     $this->assertNotNull($term, t('Term found in database'));
 
     // Submitting a term takes us to the add page; we need the List page.
-    $this->drupalGet('admin/structure/taxonomy/' . $this->vocabulary->vid . '/list');
+    $this->drupalGet('admin/structure/taxonomy/' . $this->vocabulary->vid);
 
     // Test edit link as accessed from Taxonomy administration pages.
     // Because Simpletest creates its own database when running tests, we know
     // the first edit link found on the listing page is to our term.
     $this->clickLink(t('edit'));
 
-    // This failed inexplicably with assertText, so used assertRaw. @TODO: Why?
     $this->assertText($edit['name'], t('The randomly generated term name is present.'));
     $this->assertText($edit['description'], t('The randomly generated term description is present.'));
 
@@ -468,6 +467,9 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     $this->drupalGet('taxonomy/term/' . $term->tid);
     $this->assertText($edit['name'], t('The randomly generated term name is present.'));
     $this->assertText($edit['description'], t('The randomly generated term description is present.'));
+
+    // Check that term feed page is working
+    $this->drupalGet('taxonomy/term/' . $term->tid . '/feed');
 
     // Delete the term.
     $this->drupalPost('taxonomy/term/' . $term->tid . '/edit', array(), t('Delete'));
@@ -497,7 +499,7 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     // tabledrag.js by changing the page HTML source. Each term has three hidden
     // fields, "tid:1:0[tid]", "tid:1:0[parent]", and "tid:1:0[depth]". The
     // order of the input fields in the page is used when the form is processed.
-    $this->drupalGet('admin/structure/taxonomy/' . $this->vocabulary->vid . '/list');
+    $this->drupalGet('admin/structure/taxonomy/' . $this->vocabulary->vid);
     $reorder = array(
       'tid:' . $term1->tid . ':0' => 'tid:' . $term2->tid . ':0',
       'tid:' . $term2->tid . ':0' => 'tid:' . $term3->tid . ':0',
@@ -527,7 +529,7 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     $this->assertEqual($terms[1]->parents, array($term2->tid), t('Term 3 was made a child of term 2.'));
     $this->assertEqual($terms[2]->tid, $term1->tid, t('Term 1 was moved below term 2.'));
 
-    $this->drupalPost('admin/structure/taxonomy/' . $this->vocabulary->vid . '/list', array(), t('Reset to alphabetical'));
+    $this->drupalPost('admin/structure/taxonomy/' . $this->vocabulary->vid, array(), t('Reset to alphabetical'));
     // Submit confirmation form.
     $this->drupalPost(NULL, array(), t('Reset to alphabetical'));
 
@@ -669,7 +671,7 @@ class TaxonomyHooksTestCase extends TaxonomyWebTestCase {
       'name' => $this->randomName(),
       'antonym' => 'Long',
     );
-    $this->drupalPost('admin/structure/taxonomy/' . $vocabulary->vid . '/list/add', $edit, t('Save'));
+    $this->drupalPost('admin/structure/taxonomy/' . $vocabulary->vid . '/add', $edit, t('Save'));
     $term = reset(taxonomy_get_term_by_name($edit['name']));
     $this->assertEqual($term->antonym, $edit['antonym'], t('Antonym was loaded into the term object'));
 
@@ -736,7 +738,7 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     $this->instance = array(
       'field_name' => $this->field_name,
       'object_type' => 'test_entity',
-      'bundle' => FIELD_TEST_BUNDLE,
+      'bundle' => 'test_bundle',
       'widget' => array(
         'type' => 'options_select',
       ),
@@ -749,26 +751,27 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     field_create_instance($this->instance);
 
     // Test valid and invalid values with field_attach_validate().
-    $langcode = FIELD_LANGUAGE_NONE;
-    $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
+    $langcode = LANGUAGE_NONE;
+    $entity = field_test_create_stub_entity();
     $term = $this->createTerm($this->vocabulary);
-    $entity->{$this->field_name}[$langcode][0]['value'] = $term->tid;
-    field_attach_validate('test_entity', $entity);
-    try {
-      $this->assertTrue($entity->{$this->field_name}[$langcode][0]['value'] == $term->tid, t('Correct term does not cause validation error'));
-    }
-    catch (FieldValidationException $e) {
-      $this->assertTrue($entity->{$this->field_name}[$langcode][0]['value'] != $term->tid, t('Term from wrong vocabulary does not cause validation error'));
-    }
-
-    $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
-    $bad_term = $this->createTerm($this->createVocabulary());
-    $entity->{$this->field_name}[$langcode][0]['value'] = $bad_term->tid;
+    $entity->{$this->field_name}[$langcode][0]['tid'] = $term->tid;
     try {
       field_attach_validate('test_entity', $entity);
+      $this->pass(t('Correct term does not cause validation error'));
     }
     catch (FieldValidationException $e) {
-      $this->assertTrue($this->field['settings']['allowed_values'][0]['vid'] != $bad_term->vid, t('Wrong term causes validation error'));
+      $this->fail(t('Correct term does not cause validation error'));
+    }
+
+    $entity = field_test_create_stub_entity();
+    $bad_term = $this->createTerm($this->createVocabulary());
+    $entity->{$this->field_name}[$langcode][0]['tid'] = $bad_term->tid;
+    try {
+      field_attach_validate('test_entity', $entity);
+      $this->fail(t('Wrong term causes validation error'));
+    }
+    catch (FieldValidationException $e) {
+      $this->pass(t('Wrong term causes validation error'));
     }
   }
 
@@ -795,7 +798,7 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     $this->instance = array(
       'field_name' => $this->field_name,
       'object_type' => 'test_entity',
-      'bundle' => FIELD_TEST_BUNDLE,
+      'bundle' => 'test_bundle',
       'label' => $this->randomName() . '_label',
       'widget' => array(
         'type' => 'options_select',
@@ -807,13 +810,13 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     $term = $this->createTerm($this->vocabulary);
 
     // Display creation form.
-    $langcode = FIELD_LANGUAGE_NONE;
+    $langcode = LANGUAGE_NONE;
     $this->drupalGet('test-entity/add/test-bundle');
-    $this->assertFieldByName("{$this->field_name}[$langcode][value]", '', t('Widget is displayed'));
+    $this->assertFieldByName("{$this->field_name}[$langcode]", '', t('Widget is displayed'));
 
     // Submit with some value.
     $edit = array(
-      "{$this->field_name}[$langcode][value]" => array($term->tid),
+      "{$this->field_name}[$langcode]" => array($term->tid),
     );
     $this->drupalPost(NULL, $edit, t('Save'));
     preg_match('|test-entity/(\d+)/edit|', $this->url, $match);

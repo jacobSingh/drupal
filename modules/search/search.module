@@ -1,5 +1,5 @@
 <?php
-// $Id: search.module,v 1.323 2009-11-01 21:46:16 webchick Exp $
+// $Id: search.module,v 1.327 2009-12-04 16:49:47 dries Exp $
 
 /**
  * @file
@@ -91,7 +91,7 @@ define('PREG_CLASS_CJK', '\x{3041}-\x{30ff}\x{31f0}-\x{31ff}\x{3400}-\x{4db5}' .
 '\x{4e00}-\x{9fbb}\x{f900}-\x{fad9}');
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function search_help($path, $arg) {
   switch ($path) {
@@ -113,7 +113,7 @@ function search_help($path, $arg) {
 }
 
 /**
- * Implement hook_theme().
+ * Implements hook_theme().
  */
 function search_theme() {
   return array(
@@ -138,27 +138,24 @@ function search_theme() {
 }
 
 /**
- * Implement hook_permission().
+ * Implements hook_permission().
  */
 function search_permission() {
   return array(
     'administer search' => array(
       'title' => t('Administer search'),
-      'description' => t('Configure search administration settings.'),
     ),
     'search content' => array(
-      'title' => t('Search content'),
-      'description' => t('Search website content.'),
+      'title' => t('Use search'),
     ),
     'use advanced search' => array(
       'title' => t('Use advanced search'),
-      'description' => t('Limit search results with additional criteria, such as specific content types. Could have performance implications.'),
     ),
   );
 }
 
 /**
- * Implement hook_block_info().
+ * Implements hook_block_info().
  */
 function search_block_info() {
   $blocks['form']['info'] = t('Search form');
@@ -168,7 +165,7 @@ function search_block_info() {
 }
 
 /**
- * Implement hook_block_view().
+ * Implements hook_block_view().
  */
 function search_block_view($delta = '') {
   if (user_access('search content')) {
@@ -178,7 +175,7 @@ function search_block_view($delta = '') {
 }
 
 /**
- * Implement hook_menu().
+ * Implements hook_menu().
  */
 function search_menu() {
   $items['search'] = array(
@@ -303,7 +300,7 @@ function search_dirty($word = NULL) {
 }
 
 /**
- * Implement hook_cron().
+ * Implements hook_cron().
  *
  * Fires hook_update_index() in all modules and cleans up dirty words (see
  * search_dirty).
@@ -712,9 +709,9 @@ function search_touch_node($nid) {
 }
 
 /**
- * Implement hook_node_update_index().
+ * Implements hook_node_update_index().
  */
-function search_node_update_index(stdClass $node) {
+function search_node_update_index($node) {
   // Transplant links to a node into the target node.
   $result = db_query("SELECT caption FROM {search_node_links} WHERE nid = :nid", array(':nid' => $node->nid), array('target' => 'slave'));
   $output = array();
@@ -727,16 +724,16 @@ function search_node_update_index(stdClass $node) {
 }
 
 /**
- * Implement hook_node_update().
+ * Implements hook_node_update().
  */
-function search_node_update(stdClass $node) {
+function search_node_update($node) {
   // Reindex the node when it is updated. The node is automatically indexed
   // when it is added, simply by being added to the node table.
   search_touch_node($node->nid);
 }
 
 /**
- * Implement hook_comment_insert().
+ * Implements hook_comment_insert().
  */
 function search_comment_insert($comment) {
   // Reindex the node when comments are added.
@@ -744,7 +741,7 @@ function search_comment_insert($comment) {
 }
 
 /**
- * Implement hook_comment_update().
+ * Implements hook_comment_update().
  */
 function search_comment_update($comment) {
   // Reindex the node when comments are changed.
@@ -752,7 +749,7 @@ function search_comment_update($comment) {
 }
 
 /**
- * Implement hook_comment_delete().
+ * Implements hook_comment_delete().
  */
 function search_comment_delete($comment) {
   // Reindex the node when comments are deleted.
@@ -760,7 +757,7 @@ function search_comment_delete($comment) {
 }
 
 /**
- * Implement hook_comment_publish().
+ * Implements hook_comment_publish().
  */
 function search_comment_publish($comment) {
   // Reindex the node when comments are published.
@@ -768,7 +765,7 @@ function search_comment_publish($comment) {
 }
 
 /**
- * Implement hook_comment_unpublish().
+ * Implements hook_comment_unpublish().
  */
 function search_comment_unpublish($comment) {
   // Reindex the node when comments are unpublished.
@@ -829,8 +826,9 @@ function search_get_keys() {
  *   by hook_view() and hook_node_view(). This is usually sufficient. You should
  *   only use this mechanism if you want additional, non-visible data to be
  *   indexed.
- * - Implement hook_search(). This will create a search tab for your module on
- *   the /search page with a simple keyword search form.
+ * - Implement hook_search_info(). This will create a search tab for your module on
+ *   the /search page with a simple keyword search form. You will also need to
+ *   implement hook_search_execute() to perform the search.
  * - Implement hook_update_index(). This allows your module to use Drupal's
  *   HTML indexing mechanism for searching full text efficiently.
  *

@@ -1,12 +1,87 @@
 <?php
-// $Id: default.install,v 1.16 2009-10-20 17:33:43 webchick Exp $
+// $Id: default.install,v 1.20 2009-12-04 16:49:48 dries Exp $
 
 /**
- * Implement hook_install().
+ * Implements hook_install().
  *
  * Perform actions to set up the site for this profile.
  */
 function default_install() {
+  // Add text formats.
+  $filtered_html_format = array(
+    'name' => 'Filtered HTML',
+    'weight' => 0,
+    'filters' => array(
+      // URL filter.
+      'filter_url' => array(
+        'weight' => 0,
+        'status' => 1,
+      ),
+      // HTML filter.
+      'filter_html' => array(
+        'weight' => 1,
+        'status' => 1,
+      ),
+      // Line break filter.
+      'filter_autop' => array(
+        'weight' => 2,
+        'status' => 1,
+      ),
+      // HTML corrector filter.
+      'filter_htmlcorrector' => array(
+        'weight' => 10,
+        'status' => 1,
+      ),
+    ),
+  );
+  $filtered_html_format = (object) $filtered_html_format;
+  filter_format_save($filtered_html_format);
+
+  $full_html_format = array(
+    'name' => 'Full HTML',
+    'weight' => 1,
+    'filters' => array(
+      // URL filter.
+      'filter_url' => array(
+        'weight' => 0,
+        'status' => 1,
+      ),
+      // Line break filter.
+      'filter_autop' => array(
+        'weight' => 1,
+        'status' => 1,
+      ),
+      // HTML corrector filter.
+      'filter_htmlcorrector' => array(
+        'weight' => 10,
+        'status' => 1,
+      ),
+    ),
+  );
+  $full_html_format = (object) $full_html_format;
+  filter_format_save($full_html_format);
+
+  $plain_text_format = array(
+    'name' => 'Plain text',
+    'weight' => 10,
+    'filters' => array(
+      // Escape all HTML.
+      'filter_html_escape' => array(
+        'weight' => 0,
+        'status' => 1,
+      ),
+      // Line break filter.
+      'filter_autop' => array(
+        'weight' => 1,
+        'status' => 1,
+      ),
+    ),
+  );
+  $plain_text_format = (object) $plain_text_format;
+  filter_format_save($plain_text_format);
+
+  // Set the fallback format to plain text.
+  variable_set('filter_fallback_format', $plain_text_format->format);
 
   // Enable some standard blocks.
   $values = array(
@@ -208,7 +283,7 @@ function default_install() {
     'description' => $description,
     'machine_name' => 'tags',
     'help' => $help,
-    'weight' => 0,
+
   );
   taxonomy_vocabulary_save($vocabulary);
   $instance = array(
@@ -219,13 +294,103 @@ function default_install() {
     'description' => $vocabulary->help,
     'widget' => array(
       'type' => 'taxonomy_autocomplete',
+      'weight' => 4,
+    ),
+  );
+  field_create_instance($instance);
+
+
+  // Create an image field named "Image", enabled for the 'article' content type.
+  // Many of the following values will be defaulted, they're included here as an illustrative examples.
+  // @see: http://api.drupal.org/api/function/field_create_field/7
+
+  $field = array(
+    'field_name' => 'field_image',
+    'type' => 'image',
+    'cardinality' => 1,
+    'translatable' => TRUE,
+    'locked' => FALSE,
+    'indexes' => array('fid' => array('fid')),
+    'settings' => array(
+      'uri_scheme' => 'public',
+      'default_image' => FALSE,
+    ),
+    'storage' => array(
+      'type' => 'field_sql_storage',
+      'settings' => array(),
+    ),
+  );
+  field_create_field($field);
+
+
+  // Many of the following values will be defaulted, they're included here as an illustrative examples.
+  // @see: http://api.drupal.org/api/function/field_create_instance/7
+  $instance = array(
+    'field_name' => 'field_image',
+    'object_type' => 'node',
+    'label' => 'Image',
+    'bundle' => 'article',
+    'description' => 'Upload an image to go with this article.',
+    'required' => FALSE,
+
+    'settings' => array(
+      'file_directory' => 'field/image',
+      'file_extensions' => 'png gif jpg jpeg',
+      'max_filesize' => '',
+      'max_resolution' => '',
+      'min_resolution' => '',
+      'alt_field' => TRUE,
+      'title_field' => '',
+    ),
+
+    'widget' => array(
+      'type' => 'image_image',
+      'settings' => array(
+        'progress_indicator' => 'throbber',
+        'preview_image_style' => 'thumbnail',
+      ),
+      'weight' => -1,
+    ),
+
+    'display' => array(
+      'full' => array(
+        'label' => 'hidden',
+        'type' => 'image__large',
+        'settings' => array(),
+        'weight' => -1,
+      ),
+      'teaser' => array(
+        'label' => 'hidden',
+        'type' => 'image_link_content__medium',
+        'settings' => array(),
+        'weight' => -1,
+      ),
+      'rss' => array(
+        'label' => 'hidden',
+        'type' => 'image__large',
+        'settings' => array(),
+        'weight' => -1,
+      ),
+      'search_index' => array(
+        'label' => 'hidden',
+        'type' => 'image__large',
+        'settings' => array(),
+        'weight' => -1,
+      ),
+      'search_results' => array(
+        'label' => 'hidden',
+        'type' => 'image__large',
+        'settings' => array(),
+        'weight' => -1,
+      ),
     ),
   );
   field_create_instance($instance);
 
   // Enable default permissions for system roles.
-  user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, array('access content', 'use text format 1'));
-  user_role_grant_permissions(DRUPAL_AUTHENTICATED_RID, array('access content', 'access comments', 'post comments', 'post comments without approval', 'use text format 1'));
+  $filtered_html_permission = filter_permission_name($filtered_html_format);
+  user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, array('access content', $filtered_html_permission));
+  user_role_grant_permissions(DRUPAL_AUTHENTICATED_RID, array('access content', 'access comments', 'post comments', 'post comments without approval', $filtered_html_permission));
 
   // Create a default role for site administrators, with all available permissions assigned.
   $admin_role = new stdClass();

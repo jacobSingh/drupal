@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.tokens.inc,v 1.3 2009-10-24 05:13:44 webchick Exp $
+// $Id: taxonomy.tokens.inc,v 1.5 2009-12-04 16:49:47 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_token_info().
+ * Implements hook_token_info().
  */
 function taxonomy_token_info() {
   $types['term'] = array(
@@ -91,7 +91,7 @@ function taxonomy_token_info() {
 }
 
 /**
- * Implement hook_tokens().
+ * Implements hook_tokens().
  */
 function taxonomy_tokens($type, $tokens, array $data = array(), array $options = array()) {
   $replacements = array();
@@ -115,7 +115,7 @@ function taxonomy_tokens($type, $tokens, array $data = array(), array $options =
           break;
 
         case 'description':
-          $replacements[$original] = $sanitize ? filter_xss($term->description) : $term->description;
+          $replacements[$original] = $sanitize ? check_markup($term->description, $term->format, '', TRUE) : $term->description;
           break;
 
         case 'url':

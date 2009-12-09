@@ -1,5 +1,5 @@
 <?php
-// $Id: upload.module,v 1.268 2009-11-01 21:55:31 webchick Exp $
+// $Id: upload.module,v 1.272 2009-12-04 16:49:48 dries Exp $
 
 /**
  * @file
@@ -8,7 +8,7 @@
  */
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function upload_help($path, $arg) {
   switch ($path) {
@@ -23,7 +23,7 @@ function upload_help($path, $arg) {
 }
 
 /**
- * Implement hook_theme().
+ * Implements hook_theme().
  */
 function upload_theme() {
   return array(
@@ -40,17 +40,15 @@ function upload_theme() {
 }
 
 /**
- * Implement hook_permission().
+ * Implements hook_permission().
  */
 function upload_permission() {
   return array(
     'upload files' => array(
-      'title' => t('Upload files'),
-      'description' => t('Attach images and other files to content.'),
+      'title' => t('Upload files for content'),
     ),
     'view uploaded files' => array(
-      'title' => t('View uploaded files'),
-      'description' => t('View and download files attached to content.'),
+      'title' => t('View and download uploaded files'),
     ),
   );
 }
@@ -58,7 +56,7 @@ function upload_permission() {
 /**
  * Inject links into $node for attachments.
  */
-function upload_node_links(stdClass $node, $build_mode) {
+function upload_node_links($node, $build_mode) {
   $links = array();
 
   // Display a link with the number of attachments
@@ -84,7 +82,7 @@ function upload_node_links(stdClass $node, $build_mode) {
 }
 
 /**
- * Implement hook_menu().
+ * Implements hook_menu().
  */
 function upload_menu() {
   $items['upload/js'] = array(
@@ -148,7 +146,7 @@ function _upload_file_limits($user) {
 }
 
 /**
- * Implement hook_file_download().
+ * Implements hook_file_download().
  */
 function upload_file_download($uri) {
   $file = db_query("SELECT f.*, u.nid FROM {file} f INNER JOIN {upload} u ON f.fid = u.fid WHERE uri = :uri", array(':uri' => $uri))->fetchObject();
@@ -210,7 +208,7 @@ function upload_node_form_submit(&$form, &$form_state) {
   }
 }
 
-function upload_form_alter(&$form, $form_state, $form_id) {
+function upload_form_alter(&$form, &$form_state, $form_id) {
   if ($form_id == 'node_type_form' && isset($form['identity']['type'])) {
     $form['workflow']['upload'] = array(
       '#type' => 'radios',
@@ -256,7 +254,7 @@ function upload_form_alter(&$form, $form_state, $form_id) {
         }
       }
       else {
-        $form['attachments']['wrapper'] += _upload_form($node);
+        $form['attachments']['wrapper'] += _upload_form($node, $form_state);
       }
       $form['#submit'][] = 'upload_node_form_submit';
     }
@@ -264,7 +262,7 @@ function upload_form_alter(&$form, $form_state, $form_id) {
 }
 
 /**
- * Implement hook_file_load().
+ * Implements hook_file_load().
  */
 function upload_file_load($files) {
   // Add the upload specific data into the file object.
@@ -277,7 +275,7 @@ function upload_file_load($files) {
 }
 
 /**
- * Implement hook_file_references().
+ * Implements hook_file_references().
  */
 function upload_file_references($file) {
   // If upload.module is still using a file, do not let other modules delete it.
@@ -289,7 +287,7 @@ function upload_file_references($file) {
 }
 
 /**
- * Implement hook_file_delete().
+ * Implements hook_file_delete().
  */
 function upload_file_delete($file) {
   // Delete all information associated with the file.
@@ -297,7 +295,7 @@ function upload_file_delete($file) {
 }
 
 /**
- * Implement hook_node_load().
+ * Implements hook_node_load().
  */
 function upload_node_load($nodes, $types) {
   // Collect all the revision ids for nodes with upload enabled.
@@ -335,9 +333,9 @@ function upload_node_load($nodes, $types) {
 }
 
 /**
- * Implement hook_node_view().
+ * Implements hook_node_view().
  */
-function upload_node_view(stdClass $node, $build_mode) {
+function upload_node_view($node, $build_mode) {
   if (!isset($node->files)) {
     return;
   }
@@ -381,27 +379,27 @@ function upload_node_view(stdClass $node, $build_mode) {
 }
 
 /**
- * Implement hook_node_insert().
+ * Implements hook_node_insert().
  */
-function upload_node_insert(stdClass $node) {
+function upload_node_insert($node) {
   if (user_access('upload files')) {
     upload_save($node);
   }
 }
 
 /**
- * Implement hook_node_update().
+ * Implements hook_node_update().
  */
-function upload_node_update(stdClass $node) {
+function upload_node_update($node) {
   if (user_access('upload files')) {
     upload_save($node);
   }
 }
 
 /**
- * Implement hook_node_delete().
+ * Implements hook_node_delete().
  */
-function upload_node_delete(stdClass $node) {
+function upload_node_delete($node) {
   db_delete('upload')->condition('nid', $node->nid)->execute();
   if (!is_array($node->files)) {
     return;
@@ -412,9 +410,9 @@ function upload_node_delete(stdClass $node) {
 }
 
 /**
- * Implement hook_node_revision_delete().
+ * Implements hook_node_revision_delete().
  */
-function upload_node_revision_delete(stdClass $node) {
+function upload_node_revision_delete($node) {
   db_delete('upload')->condition('vid', $node->vid)->execute();
   if (!is_array($node->files)) {
     return;
@@ -425,9 +423,9 @@ function upload_node_revision_delete(stdClass $node) {
 }
 
 /**
- * Implement hook_node_search_result().
+ * Implements hook_node_search_result().
  */
-function upload_node_search_result(stdClass $node) {
+function upload_node_search_result($node) {
   return isset($node->files) && is_array($node->files) ? format_plural(count($node->files), '1 attachment', '@count attachments') : NULL;
 }
 
@@ -476,7 +474,7 @@ function upload_total_space_used() {
   return db_query('SELECT SUM(f.filesize) FROM {file} f INNER JOIN {upload} u ON f.fid = u.fid')->fetchField();
 }
 
-function upload_save(stdClass $node) {
+function upload_save($node) {
   if (empty($node->files) || !is_array($node->files)) {
     return;
   }
@@ -529,12 +527,12 @@ function upload_save(stdClass $node) {
   }
 }
 
-function _upload_form(stdClass $node) {
+function _upload_form($node, &$form_state) {
   global $user;
 
+  $form_state['cache'] = TRUE;
   $form = array(
     '#theme' => 'upload_form_new',
-    '#cache' => TRUE,
     '#prefix' => '<div id="attach-wrapper">',
     '#suffix' => '</div>',
   );
@@ -669,7 +667,7 @@ function upload_js() {
 
   $node->files = $files;
 
-  $form = _upload_form($node);
+  $form = _upload_form($node, $form_state);
 
   unset($cached_form['attachments']['wrapper']['new']);
   $cached_form['attachments']['wrapper'] = array_merge($cached_form['attachments']['wrapper'], $form);

@@ -1,8 +1,28 @@
 <?php
-// $Id: dashboard.module,v 1.4 2009-10-23 22:24:12 webchick Exp $
+// $Id: dashboard.module,v 1.8 2009-12-04 16:49:46 dries Exp $
 
 /**
- * Implement hook_menu().
+ * Implements hook_help().
+ */
+function dashboard_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#dashboard':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Dashboard module provides a <a href="@dashboard">Dashboard page</a> in the administrative interface for organizing administrative tasks and navigation, and tracking information within your site. The Dashboard page contains blocks, which you can add to and arrange using the drag and drop interface that appears when you click on the <em>Customize</em> link.', array('@dashboard' => url('admin/dashboard'))) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Tracking user activity') . '</dt>';
+      $output .= '<dd>' . t("By enabling blocks such as <em>Who's online</em> and <em>Who's new</em>, site users can track who is logged in and new user signups at a centralized location.") . '</dd>';
+      $output .= '<dt>' . t('Tracking content activity') . '</dt>';
+      $output .= '<dd>' . t('By enabling blocks such as <em>Recent blog posts</em>, <em>New forum topics</em> and <em>Recent comments</em>, site users can view newly added site content at a glance.') . '</dd>';
+      $output .= '</dl>';
+      return $output;
+  }
+}
+
+/**
+ * Implements hook_menu().
  */
 function dashboard_menu() {
   $items['admin/dashboard'] = array(
@@ -40,7 +60,7 @@ function dashboard_menu() {
 }
 
 /**
- * Implement hook_block_info_alter().
+ * Implements hook_block_info_alter().
  *
  * Skip rendering dashboard blocks when not on the dashboard page itself. This
  * prevents expensive dashboard blocks from causing performance issues on pages
@@ -57,7 +77,7 @@ function dashboard_block_info_alter(&$blocks) {
 }
 
 /**
- * Implement hook_page_build().
+ * Implements hook_page_build().
  *
  * Display dashboard blocks in the main content region.
  */
@@ -121,19 +141,19 @@ function dashboard_page_build(&$page) {
 }
 
 /**
- * Implement hook_permission().
+ * Implements hook_permission().
  */
 function dashboard_permission() {
   return array(
     'access dashboard' => array(
       'title' => t('View the administrative dashboard'),
-      'description' => t('Access the site-wide dashboard. Modifying the dashboard requires the "Administer blocks" permission.'),
+      'description' => t('Note: modifying the dashboard requires the !administer_blocks permission.', array('!administer_blocks' => l(t('Administer blocks'), 'admin/config/people/permissions', array('fragment' => 'module-block')))),
     ),
   );
 }
 
 /**
- * Implement hook_system_info_alter().
+ * Implements hook_system_info_alter().
  *
  * Add regions to each theme to store the dashboard blocks.
  */
@@ -147,7 +167,7 @@ function dashboard_system_info_alter(&$info, $file, $type) {
 }
 
 /**
- * Implement hook_theme().
+ * Implements hook_theme().
  */
 function dashboard_theme() {
   return array(
@@ -208,8 +228,12 @@ function dashboard_admin($launch_customize = FALSE) {
  * Returns TRUE if the user is currently viewing the dashboard.
  */
 function dashboard_is_visible() {
-  $menu_item = menu_get_item();
-  return isset($menu_item['page_callback']) && $menu_item['page_callback'] == 'dashboard_admin';
+  static $is_visible;
+  if (!isset($is_visible)) {
+    $menu_item = menu_get_item();
+    $is_visible = isset($menu_item['page_callback']) && $menu_item['page_callback'] == 'dashboard_admin';
+  }
+  return $is_visible;
 }
 
 /**
@@ -225,15 +249,19 @@ function dashboard_region_descriptions() {
  * Return an array of dashboard region names.
  */
 function dashboard_regions() {
-  return array_keys(dashboard_region_descriptions());
+  static $regions;
+  if (!isset($regions)) {
+    $regions = array_keys(dashboard_region_descriptions());
+  }
+  return $regions;
 }
 
 /**
- * Implement hook_dashboard_regions().
+ * Implements hook_dashboard_regions().
  */
 function dashboard_dashboard_regions() {
   return array(
-    'dashboard_main' =>  'Dashboard main',
+    'dashboard_main' => 'Dashboard main',
     'dashboard_sidebar' => 'Dashboard sidebar',
   );
 }

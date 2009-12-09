@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.install,v 1.27 2009-10-16 19:06:24 dries Exp $
+// $Id: taxonomy.install,v 1.29 2009-12-04 16:49:47 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implement hook_uninstall().
+ * Implements hook_uninstall().
  */
 function taxonomy_uninstall() {
   // Remove variables.
@@ -16,7 +16,7 @@ function taxonomy_uninstall() {
 }
 
 /**
- * Implement hook_schema().
+ * Implements hook_schema().
  */
 function taxonomy_schema() {
   $schema['taxonomy_term_data'] = array(
@@ -49,6 +49,13 @@ function taxonomy_schema() {
         'size' => 'big',
         'description' => 'A description of the term.',
         'translatable' => TRUE,
+      ),
+      'format' => array(
+        'type' => 'int',
+        'size' => 'small',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The {filter_format}.format of the description.',
       ),
       'weight' => array(
         'type' => 'int',
@@ -407,3 +414,17 @@ function taxonomy_update_7005(&$sandbox) {
    db_drop_table('taxonomy_term_node');
   }
 }
+
+/**
+ * Add vocabulary machine_name column.
+ */
+function taxonomy_update_7006() {
+  db_add_field('taxonomy_term_data', 'format', array(
+    'type' => 'int',
+    'size' => 'small',
+    'not null' => TRUE,
+    'default' => 0,
+    'description' => 'The {filter_format}.format of the description.',
+  ));
+}
+

@@ -1,4 +1,4 @@
-/* $Id: dashboard.css,v 1.2 2009-10-18 11:20:26 dries Exp $ */
+/* $Id: dashboard.css,v 1.4 2009-12-02 07:28:22 webchick Exp $ */
 
 #dashboard div.dashboard-region {
   float: left;
@@ -48,7 +48,7 @@
 }
 
 #dashboard .canvas-content {
-  background-color: #4d4d4d;
+  background-color: #777;
   padding: 10px;
   color: #fff;
 }
@@ -60,13 +60,15 @@
 
 #dashboard #disabled-blocks .ui-sortable {
   padding: 0;
-  background-color: #4d4d4d;
+  background-color: #777;
   border: 0;
 }
 
-#dashboard .canvas-content input {
+#dashboard .canvas-content a.button {
   float: right;
   margin: 0 0 0 10px;
+  color: #5a5a5a;
+  text-decoration: none;
 }
 
 #dashboard .region {

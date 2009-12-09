@@ -1,5 +1,5 @@
 <?php
-// $Id: content_types.inc,v 1.99 2009-11-03 05:32:07 webchick Exp $
+// $Id: content_types.inc,v 1.105 2009-12-04 16:49:46 dries Exp $
 
 /**
  * @file
@@ -12,7 +12,8 @@
 function node_overview_types() {
   $types = node_type_get_types();
   $names = node_type_get_names();
-  $header = array(t('Name'), array('data' => t('Operations'), 'colspan' => '2'));
+  $field_ui = module_exists('field_ui');
+  $header = array(t('Name'), array('data' => t('Operations'), 'colspan' => $field_ui ? '4' : '2'));
   $rows = array();
 
   foreach ($names as $key => $name) {
@@ -23,6 +24,14 @@ function node_overview_types() {
       // Set the edit column.
       $row[] = array('data' => l(t('edit'), 'admin/structure/types/manage/' . $type_url_str));
 
+      if ($field_ui) {
+        // Manage fields.
+        $row[] = array('data' => l(t('manage fields'), 'admin/structure/types/manage/' . $type_url_str . '/fields'));
+
+        // Display fields.
+        $row[] = array('data' => l(t('manage display'), 'admin/structure/types/manage/' . $type_url_str . '/display'));
+      }
+
       // Set the delete column.
       if ($type->custom) {
         $row[] = array('data' => l(t('delete'), 'admin/structure/types/manage/' . $type_url_str . '/delete'));
@@ -30,18 +39,16 @@ function node_overview_types() {
       else {
         $row[] = array('data' => '');
       }
+
       $rows[] = $row;
     }
-  }
-
-  if (empty($rows)) {
-    $rows[] = array(array('data' => t('No content types available. <a href="@link">Add content type</a>.', array('@link' => url('admin/structure/types/add'))), 'colspan' => '5', 'class' => array('message')));
   }
 
   $build['node_table'] = array(
     '#theme' => 'table',
     '#header' => $header,
-    '#rows' => $rows
+    '#rows' => $rows,
+    '#empty' => t('No content types available.'),
   );
 
   return $build;
@@ -120,7 +127,7 @@ function node_type_form($form, &$form_state, $type = NULL) {
     '#title' => t('Description'),
     '#type' => 'textarea',
     '#default_value' => $type->description,
-    '#description' => t('Describe this content type. It will be displayed on the <em>Add new content</em> page.'),    
+    '#description' => t('Describe this content type. It will be displayed on the <em>Add new content</em> page.'),
   );
 
   $form['additional_settings'] = array(
@@ -166,7 +173,7 @@ function node_type_form($form, &$form_state, $type = NULL) {
     '#type' => 'textarea',
     '#title' => t('Explanation or submission guidelines'),
     '#default_value' => $type->help,
-    '#description' => t('This text will be displayed at the top of the submission form for this content type.')
+    '#description' => t('This text will be displayed at the top of the page when creating new content of this type.'),
   );
   $form['workflow'] = array(
     '#type' => 'fieldset',
@@ -195,9 +202,9 @@ function node_type_form($form, &$form_state, $type = NULL) {
   );
   $form['display']['node_submitted'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Display post information'),
+    '#title' => t('Display author and date information.'),
     '#default_value' => variable_get('node_submitted_' . $type->type, TRUE),
-    '#description' => t('Enable the <em>submitted by Username on date</em> text.'),
+    '#description' => t('Author username and publish date will be displayed.'),
   );
   $form['display']['teaser_length'] = array(
     '#type' => 'select',
@@ -292,7 +299,7 @@ function node_type_form_validate($form, &$form_state) {
 }
 
 /**
- * Implement hook_form_submit().
+ * Implements hook_form_submit().
  */
 function node_type_form_submit($form, &$form_state) {
   $op = isset($form_state['values']['op']) ? $form_state['values']['op'] : '';
@@ -372,7 +379,7 @@ function node_type_form_submit($form, &$form_state) {
 }
 
 /**
- * Implement hook_node_type_insert().
+ * Implements hook_node_type_insert().
  */
 function node_node_type_insert($info) {
   if (!empty($info->old_type) && $info->old_type != $info->type) {
@@ -385,7 +392,7 @@ function node_node_type_insert($info) {
 }
 
 /**
- * Implement hook_node_type_update().
+ * Implements hook_node_type_update().
  */
 function node_node_type_update($info) {
   if (!empty($info->old_type) && $info->old_type != $info->type) {
@@ -430,7 +437,7 @@ function node_type_delete_confirm($form, &$form_state, $type) {
 
   $num_nodes = db_query("SELECT COUNT(*) FROM {node} WHERE type = :type", array(':type' => $type->type))->fetchField();
   if ($num_nodes) {
-    $caption .= '<p>' . format_plural($num_nodes, '<strong>Warning:</strong> there is currently 1 %type post on your site. It may not be able to be displayed or edited correctly once you have removed this content type.', '<strong>Warning:</strong> there are currently @count %type posts on your site. They may not be able to be displayed or edited correctly once you have removed this content type.', array('%type' => $type->name)) . '</p>';
+    $caption .= '<p>' . format_plural($num_nodes, '%type is used by 1 piece of content on your site. If you remove this content type, you will not be able to edit the %type content and it may not display correctly.', '%type is used by @count pieces of content on your site. If you remove %type, you will not be able to edit the %type content and it may not display correctly.', array('%type' => $type->name)) . '</p>';
   }
 
   $caption .= '<p>' . t('This action cannot be undone.') . '</p>';

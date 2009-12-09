@@ -1,5 +1,5 @@
 <?php
-// $Id: update.php,v 1.309 2009-10-24 01:31:05 webchick Exp $
+// $Id: update.php,v 1.312 2009-11-29 06:32:45 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -37,8 +37,7 @@ function update_selection_page() {
   return $output;
 }
 
-function update_script_selection_form() {
-  $form = array();
+function update_script_selection_form($form, &$form_state) {
   $count = 0;
   $form['start'] = array(
     '#tree' => TRUE,
@@ -195,7 +194,7 @@ function update_info_page() {
   $output .= "<li>Install your new files in the appropriate location, as described in the handbook.</li>\n";
   $output .= "</ol>\n";
   $output .= "<p>When you have performed the steps above, you may proceed.</p>\n";
-  $output .= '<form method="post" action="update.php?op=selection&amp;token=' . $token . '"><p><input type="submit" value="Continue" /></p></form>';
+  $output .= '<form method="post" action="update.php?op=selection&amp;token=' . $token . '"><p><input type="submit" value="Continue" class="form-submit" /></p></form>';
   $output .= "\n";
   return $output;
 }
@@ -312,10 +311,8 @@ if (empty($op) && update_access_allowed()) {
   // Load module basics.
   include_once DRUPAL_ROOT . '/includes/module.inc';
   $module_list['system']['filename'] = 'modules/system/system.module';
-  $module_list['filter']['filename'] = 'modules/filter/filter.module';
   module_list(TRUE, FALSE, FALSE, $module_list);
   drupal_load('module', 'system');
-  drupal_load('module', 'filter');
 
   // Reset the module_implements() cache so that any new hook implementations
   // in updated code are picked up.

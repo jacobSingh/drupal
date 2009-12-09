@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.547 2009-11-03 06:47:22 webchick Exp $
+// $Id: theme.inc,v 1.557 2009-12-02 14:56:32 dries Exp $
 
 /**
  * @file
@@ -85,6 +85,9 @@ function drupal_theme_initialize() {
     $ancestor = $themes[$ancestor]->base_theme;
   }
   _drupal_theme_initialize($themes[$theme], array_reverse($base_theme));
+
+  // Themes can have alter functions, so reset the drupal_alter() cache.
+  drupal_static_reset('drupal_alter');
 }
 
 /**
@@ -559,6 +562,7 @@ function list_themes($refresh = FALSE) {
 
   if ($refresh) {
     $list = array();
+    system_list_reset();
   }
 
   if (empty($list)) {
@@ -567,8 +571,7 @@ function list_themes($refresh = FALSE) {
     // Extract from the database only when it is available.
     // Also check that the site is not in the middle of an install or update.
     if (db_is_active() && !defined('MAINTENANCE_MODE')) {
-      $result = db_query("SELECT * FROM {system} WHERE type = :theme", array(':theme' => 'theme'));
-      foreach ($result as $theme) {
+      foreach (system_list('theme') as $theme) {
         if (file_exists($theme->filename)) {
           $theme->info = unserialize($theme->info);
           $themes[] = $theme;
@@ -1135,7 +1138,7 @@ function theme_get_setting($setting_name, $theme = NULL) {
 
   // If no key is given, use the current theme if we can determine it.
   if (is_null($theme)) {
-    $theme = !empty($GLOBALS['theme_key']) ? $GLOBALS['theme_key'] : (!empty($GLOBALS['custom_theme']) ? $GLOBALS['custom_theme'] : '');
+    $theme = !empty($GLOBALS['theme_key']) ? $GLOBALS['theme_key'] : '';
   }
 
   if (empty($cache[$theme])) {
@@ -1236,9 +1239,74 @@ function theme_render_template($template_file, $variables) {
   extract($variables, EXTR_SKIP);               // Extract the variables to a local namespace
   ob_start();                                   // Start output buffering
   include DRUPAL_ROOT . '/' . $template_file;   // Include the template file
-  $contents = ob_get_contents();                // Get the contents of the buffer
-  ob_end_clean();                               // End buffering and discard
-  return $contents;                             // Return the contents
+  return ob_get_clean();                        // End buffering and return its contents
+}
+
+/**
+ * Enable a given list of themes.
+ *
+ * @param $theme_list
+ *   An array of theme names.
+ */
+function theme_enable($theme_list) {
+  drupal_clear_css_cache();
+
+  foreach ($theme_list as $key) {
+    db_update('system')
+      ->fields(array('status' => 1))
+      ->condition('type', 'theme')
+      ->condition('name', $key)
+      ->execute();
+  }
+
+  list_themes(TRUE);
+  menu_rebuild();
+  drupal_theme_rebuild();
+
+  // Notify locale module about new themes being enabled, so translations can
+  // be imported. This might start a batch, and only return to the redirect
+  // path after that.
+  module_invoke('locale', 'system_update', $theme_list);
+
+  // Invoke hook_themes_enabled after the themes have been enabled.
+  module_invoke_all('themes_enabled', $theme_list);
+
+  return;
+}
+
+/**
+ * Disable a given list of themes.
+ *
+ * @param $theme_list
+ *   An array of theme names.
+ */
+function theme_disable($theme_list) {
+  // Don't disable the default theme.
+  if ($pos = array_search(variable_get('theme_default', 'garland'), $theme_list) !== FALSE) {
+    unset($theme_list[$pos]);
+    if (empty($theme_list)) {
+      return;
+    }
+  }
+
+  drupal_clear_css_cache();
+
+  foreach ($theme_list as $key) {
+    db_update('system')
+      ->fields(array('status' => 0))
+      ->condition('type', 'theme')
+      ->condition('name', $key)
+      ->execute();
+  }
+
+  list_themes(TRUE);
+  menu_rebuild();
+  drupal_theme_rebuild();
+
+  // Invoke hook_themes_enabled after the themes have been enabled.
+  module_invoke_all('themes_disabled', $theme_list);
+
+  return;
 }
 
 /**
@@ -1364,6 +1432,31 @@ function theme_status_messages($variables) {
     $output .= "</div>\n";
   }
   return $output;
+}
+
+/**
+ * Return a themed link.
+ *
+ * All Drupal code that outputs a link should call the l() function. That
+ * function performs some initial preprocessing, and then, if necessary,
+ * calls theme('link') for rendering the anchor tag.
+ *
+ * To optimize performance for sites that don't need custom theming of links,
+ * the l() function includes an inline copy of this function, and uses that copy
+ * if none of the enabled modules or the active theme implement any preprocess
+ * or process functions or override this theme implementation.
+ *
+ * @param $variables
+ *   An associative array containing the keys 'text', 'path', and 'options'.
+ *   See the l() function for information about these variables.
+ *
+ * @return
+ *   An HTML string containing a link to the given path.
+ *
+ * @see l()
+ */
+function theme_link($variables) {
+  return '<a href="' . check_plain(url($variables['path'], $variables['options'])) . '"' . drupal_attributes($variables['options']['attributes']) . '>' . ($variables['options']['html'] ? $variables['text'] : check_plain($variables['text'])) . '</a>';
 }
 
 /**
@@ -1613,6 +1706,8 @@ function theme_submenu($variables) {
  *     within a table. For example, one may easily group three columns and
  *     apply same background style to all.
  *   - sticky: Use a "sticky" table header.
+ *   - empty: The message to display in an extra row if table does not have any
+ *     rows.
  *
  * @return
  *   An HTML string representing the table.
@@ -1624,6 +1719,7 @@ function theme_table($variables) {
   $caption = $variables['caption'];
   $colgroups = $variables['colgroups'];
   $sticky = $variables['sticky'];
+  $empty = $variables['empty'];
 
   // Add sticky headers, if applicable.
   if (count($header) && $sticky) {
@@ -1689,6 +1785,11 @@ function theme_table($variables) {
   }
   else {
     $ts = array();
+  }
+
+  // Add the 'empty' row message if available.
+  if (!count($rows) && $empty) {
+    $rows[] = array(array('data' => $empty, 'colspan' => count($header), 'class' => array('empty', 'message')));
   }
 
   // Format the table rows:
@@ -1975,7 +2076,10 @@ function template_preprocess_username(&$variables) {
     $variables['link_path'] = 'user/' . $variables['uid'];
   }
   elseif (!empty($account->homepage)) {
-    $variables['link_attributes'] = array('rel' => 'nofollow');
+    // Like the 'class' attribute, the 'rel' attribute can hold a
+    // space-separated set of values, so initialize it as an array to make it
+    // easier for other preprocess functions to append to it.
+    $variables['link_attributes'] = array('rel' => array('nofollow'));
     $variables['link_path'] = $account->homepage;
     $variables['homepage'] = $account->homepage;
   }
@@ -1995,7 +2099,14 @@ function template_process_username(&$variables) {
   // This is done in the process phase so that attributes may be added by
   // modules or the theme during the preprocess phase.
   if (isset($variables['link_path'])) {
-    $variables['link_options']['attributes'] = $variables['link_attributes'] + $variables['attributes_array'];
+    // $variables['attributes_array'] contains attributes that should be applied
+    // regardless of whether a link is being rendered or not.
+    // $variables['link_attributes'] contains attributes that should only be
+    // applied if a link is being rendered. Preprocess functions are encouraged
+    // to use the former unless they want to add attributes on the link only.
+    // If a link is being rendered, these need to be merged. Some attributes are
+    // themselves arrays, so the merging needs to be recursive.
+    $variables['link_options']['attributes'] = array_merge_recursive($variables['link_attributes'], $variables['attributes_array']);
   }
 }
 
@@ -2477,6 +2588,7 @@ function template_preprocess_maintenance_page(&$variables) {
  * pluggable template engine. Uses the region name to generate a template file
  * suggestions. If none are found, the default region.tpl.php is used.
  *
+ * @see drupal_region_class()
  * @see region.tpl.php
  */
 function template_preprocess_region(&$variables) {
@@ -2484,7 +2596,7 @@ function template_preprocess_region(&$variables) {
   $variables['content'] = $variables['elements']['#children'];
   $variables['region'] = $variables['elements']['#region'];
 
-  $region = 'region-' . str_replace('_', '-', $variables['region']);
+  $region = drupal_region_class($variables['region']);
   $variables['classes_array'][] = $region;
   $variables['template_files'][] = $region;
 }

@@ -1,5 +1,5 @@
 <?php
-// $Id: blog.test,v 1.21 2009-11-01 21:26:44 webchick Exp $
+// $Id: blog.test,v 1.24 2009-12-03 20:21:50 dries Exp $
 
 class BlogTestCase extends DrupalWebTestCase {
   protected $big_user;
@@ -116,7 +116,7 @@ class BlogTestCase extends DrupalWebTestCase {
    * @param integer $response
    *   HTTP response code.
    */
-  private function verifyBlogs($node_user, stdClass $node, $admin, $response = 200) {
+  private function verifyBlogs($node_user, $node, $admin, $response = 200) {
     $crumb = '›';
     $quote = '&#039;';
 
@@ -138,20 +138,20 @@ class BlogTestCase extends DrupalWebTestCase {
     // View blog node.
     $this->drupalGet('node/' . $node->nid);
     $this->assertResponse(200);
-    $this->assertTitle($node->title[FIELD_LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Blog node was displayed'));
+    $this->assertTitle($node->title[LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Blog node was displayed'));
     $this->assertText(t('Home ' . $crumb . ' Blogs ' . $crumb . ' @name' . $quote . 's blog', array('@name' => format_username($node_user))), t('Breadcrumbs were displayed'));
 
     // View blog edit node.
     $this->drupalGet('node/' . $node->nid . '/edit');
     $this->assertResponse($response);
     if ($response == 200) {
-      $this->assertTitle('Edit Blog entry ' . $node->title[FIELD_LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Blog edit node was displayed'));
+      $this->assertTitle('Edit Blog entry ' . $node->title[LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Blog edit node was displayed'));
     }
 
     if ($response == 200) {
       // Edit blog node.
       $edit = array();
-      $langcode = FIELD_LANGUAGE_NONE;
+      $langcode = LANGUAGE_NONE;
       $edit["title[$langcode][0][value]"] = 'node/' . $node->nid;
       $edit["body[$langcode][0][value]"] = $this->randomName(256);
       $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));
@@ -187,7 +187,7 @@ class BlogTestCase extends DrupalWebTestCase {
     $this->assertResponse(200);
     $this->assertTitle('Blogs | Drupal', t('Blog page was displayed'));
     $this->assertText(t('Home'), t('Breadcrumbs were displayed'));
-    $this->assertLink(t('Create new blog entry.'));
+    $this->assertLink(t('Create new blog entry'));
 
     // Confirm a blog page was displayed per user.
     $this->drupalGet('blog/' . $user->uid);

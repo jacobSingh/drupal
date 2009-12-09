@@ -1,5 +1,5 @@
 <?php
-// $Id: translation.module,v 1.63 2009-11-01 12:11:10 dries Exp $
+// $Id: translation.module,v 1.67 2009-12-04 16:49:47 dries Exp $
 
 /**
  * @file
@@ -26,7 +26,7 @@
 define('TRANSLATION_ENABLED', 2);
 
 /**
- * Implement hook_help().
+ * Implements hook_help().
  */
 function translation_help($path, $arg) {
   switch ($path) {
@@ -51,7 +51,7 @@ function translation_help($path, $arg) {
 }
 
 /**
- * Implement hook_menu().
+ * Implements hook_menu().
  */
 function translation_menu() {
   $items = array();
@@ -75,27 +75,26 @@ function translation_menu() {
  * and where the current node is not language neutral (which should span
  * all languages).
  */
-function _translation_tab_access(stdClass $node) {
-  if (!empty($node->language) && translation_supported_type($node->type)) {
+function _translation_tab_access($node) {
+  if ($node->language != LANGUAGE_NONE && translation_supported_type($node->type)) {
     return user_access('translate content');
   }
   return FALSE;
 }
 
 /**
- * Implement hook_permission().
+ * Implements hook_permission().
  */
 function translation_permission() {
   return array(
     'translate content' => array(
       'title' => t('Translate content'),
-      'description' => t('Translate website content.'),
     ),
   );
 }
 
 /**
- * Implement hook_form_FORM_ID_alter().
+ * Implements hook_form_FORM_ID_alter().
  */
 function translation_form_node_type_form_alter(&$form, &$form_state) {
   // Add translation option to content type form.
@@ -105,7 +104,7 @@ function translation_form_node_type_form_alter(&$form, &$form_state) {
 }
 
 /**
- * Implement hook_form_alter().
+ * Implements hook_form_alter().
  *
  * - Add translation option to content type form.
  * - Alters language fields on node forms when a translation
@@ -123,7 +122,7 @@ function translation_form_alter(&$form, &$form_state, $form_id) {
       // Disable languages for existing translations, so it is not possible to switch this
       // node to some language which is already in the translation set. Also remove the
       // language neutral option.
-      unset($form['language']['#options']['']);
+      unset($form['language']['#options'][LANGUAGE_NONE]);
       foreach (translation_node_get_translations($node->tnid) as $translation) {
         if ($translation->nid != $node->nid) {
           unset($form['language']['#options'][$translation->language]);
@@ -163,12 +162,12 @@ function translation_form_alter(&$form, &$form_state, $form_id) {
 }
 
 /**
- * Implement hook_node_view().
+ * Implements hook_node_view().
  *
  * Display translation links with native language names, if this node
  * is part of a translation set.
  */
-function translation_node_view(stdClass $node, $build_mode) {
+function translation_node_view($node, $build_mode) {
   if (isset($node->tnid) && $translations = translation_node_get_translations($node->tnid)) {
     $path = 'node/' . $node->nid;
     $links = language_negotiation_get_switch_links(LANGUAGE_TYPE_CONTENT, $path);
@@ -186,9 +185,9 @@ function translation_node_view(stdClass $node, $build_mode) {
 }
 
 /**
- * Implement hook_node_prepare().
+ * Implements hook_node_prepare().
  */
-function translation_node_prepare(stdClass $node) {
+function translation_node_prepare($node) {
   // Only act if we are dealing with a content type supporting translations.
   if (translation_supported_type($node->type)) {
     if (empty($node->nid) && isset($_GET['translation']) && isset($_GET['language']) &&
@@ -202,7 +201,7 @@ function translation_node_prepare(stdClass $node) {
         $translations = translation_node_get_translations($source_node->tnid);
         if (isset($translations[$language])) {
           $languages = language_list();
-          drupal_set_message(t('A translation of %title in %language already exists, a new %type  will be created instead of a translation.', array('%title' => $source_node->title[FIELD_LANGUAGE_NONE][0]['value'], '%language' => $languages[$language]->name, '%type' => $node->type)), 'error');
+          drupal_set_message(t('A translation of %title in %language already exists, a new %type  will be created instead of a translation.', array('%title' => $source_node->title[LANGUAGE_NONE][0]['value'], '%language' => $languages[$language]->name, '%type' => $node->type)), 'error');
           return;
         }
       }
@@ -216,9 +215,9 @@ function translation_node_prepare(stdClass $node) {
 }
 
 /**
- * Implement hook_node_insert().
+ * Implements hook_node_insert().
  */
-function translation_node_insert(stdClass $node) {
+function translation_node_insert($node) {
   // Only act if we are dealing with a content type supporting translations.
   if (translation_supported_type($node->type)) {
     if (!empty($node->translation_source)) {
@@ -249,9 +248,9 @@ function translation_node_insert(stdClass $node) {
 }
 
 /**
- * Implement hook_node_update().
+ * Implements hook_node_update().
  */
-function translation_node_update(stdClass $node) {
+function translation_node_update($node) {
   // Only act if we are dealing with a content type supporting translations.
   if (translation_supported_type($node->type)) {
     if (isset($node->translation) && $node->translation && !empty($node->language) && $node->tnid) {
@@ -276,11 +275,11 @@ function translation_node_update(stdClass $node) {
 }
 
 /**
- * Implement hook_node_validate().
+ * Implements hook_node_validate().
  *
  * Ensure that duplicate translations can not be created for the same source.
  */
-function translation_node_validate(stdClass $node, $form) {
+function translation_node_validate($node, $form) {
   // Only act on translatable nodes with a tnid or translation_source.
   if (translation_supported_type($node->type) && (!empty($node->tnid) || !empty($form['#node']->translation_source->nid))) {
     $tnid = !empty($node->tnid) ? $node->tnid : $form['#node']->translation_source->nid;
@@ -292,9 +291,9 @@ function translation_node_validate(stdClass $node, $form) {
 }
 
 /**
- * Implement hook_node_delete().
+ * Implements hook_node_delete().
  */
-function translation_node_delete(stdClass $node) {
+function translation_node_delete($node) {
   // Only act if we are dealing with a content type supporting translations.
   if (translation_supported_type($node->type)) {
     translation_remove_from_set($node);
@@ -305,7 +304,7 @@ function translation_node_delete(stdClass $node) {
  * Remove a node from its translation set (if any)
  * and update the set accordingly.
  */
-function translation_remove_from_set(stdClass $node) {
+function translation_remove_from_set($node) {
   if (isset($node->tnid)) {
     $query = db_update('node')
       ->fields(array(
@@ -401,7 +400,7 @@ function translation_path_get_translations($path) {
 }
 
 /**
- * Implement hook_language_switch_link_alter().
+ * Implements hook_language_switch_link_alter().
  *
  * Replaces links with pointers to translated versions of the content.
  */

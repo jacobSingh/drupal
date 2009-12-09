@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.test,v 1.46 2009-10-13 15:39:41 dries Exp $
+// $Id: filter.test,v 1.51 2009-12-03 15:33:42 dries Exp $
 
 /**
  * Tests for text format and filter CRUD operations.
@@ -11,6 +11,10 @@ class FilterCRUDTestCase extends DrupalWebTestCase {
       'description' => 'Test creation, loading, updating, deleting of text formats and filters.',
       'group' => 'Filter',
     );
+  }
+
+  function setUp() {
+    parent::setUp('filter_test');
   }
 
   /**
@@ -47,6 +51,12 @@ class FilterCRUDTestCase extends DrupalWebTestCase {
     $this->verifyTextFormat($format);
     $this->verifyFilters($format);
 
+    // Add a uncacheable filter and save again.
+    $format->filters['filter_test_uncacheable']['status'] = 1;
+    filter_format_save($format);
+    $this->verifyTextFormat($format);
+    $this->verifyFilters($format);
+
     // Delete the text format.
     filter_format_delete($format);
     $db_format = db_query("SELECT * FROM {filter_format} WHERE format = :format", array(':format' => $format->format))->fetchObject();
@@ -79,6 +89,20 @@ class FilterCRUDTestCase extends DrupalWebTestCase {
     $this->assertEqual($filter_format->name, $format->name, t('filter_format_load: Proper title for text format %format.', $t_args));
     $this->assertEqual($filter_format->cache, $format->cache, t('filter_format_load: Proper cache indicator for text format %format.', $t_args));
     $this->assertEqual($filter_format->weight, $format->weight, t('filter_format_load: Proper weight for text format %format.', $t_args));
+
+    // Verify the 'cache' text format property according to enabled filters.
+    $filter_info = filter_get_filters();
+    $filters = filter_list_format($filter_format->format);
+    $cacheable = TRUE;
+    foreach ($filters as $name => $filter) {
+      // If this filter is not cacheable, update $cacheable accordingly, so we
+      // can verify $format->cache after iterating over all filters.
+      if ($filter->status && isset($filter_info[$name]['cache']) && !$filter_info[$name]['cache']) {
+        $cacheable = FALSE;
+        break;
+      }
+    }
+    $this->assertEqual($filter_format->cache, $cacheable, t('Text format contains proper cache property.'));
   }
 
   /**
@@ -90,17 +114,13 @@ class FilterCRUDTestCase extends DrupalWebTestCase {
     $format_filters = $format->filters;
     foreach ($filters as $name => $filter) {
       $t_args = array('%format' => $format->name, '%filter' => $name);
-      // Check whether the filter is contained in the saved $format.
-      if (isset($format_filters[$name])) {
-        // Verify that filter status is properly stored.
-        $this->assertEqual($filter->status, $format_filters[$name]['status'], t('Database: Proper status for %filter in text format %format.', $t_args));
-        // Verify that filter settings were properly stored.
-        $this->assertEqual(unserialize($filter->settings), isset($format_filters[$name]['settings']) ? $format_filters[$name]['settings'] : array(), t('Database: Proper filter settings for %filter in text format %format.', $t_args));
-      }
-      // Otherwise, the stored filter must be disabled.
-      else {
-        $this->assertTrue($filter->status == 0, t('Database: Proper status for disabled %filter in text format %format.', $t_args));
-      }
+
+      // Verify that filter status is properly stored.
+      $this->assertEqual($filter->status, $format_filters[$name]['status'], t('Database: Proper status for %filter in text format %format.', $t_args));
+
+      // Verify that filter settings were properly stored.
+      $this->assertEqual(unserialize($filter->settings), isset($format_filters[$name]['settings']) ? $format_filters[$name]['settings'] : array(), t('Database: Proper filter settings for %filter in text format %format.', $t_args));
+
       // Verify that each filter has a module name assigned.
       $this->assertTrue(!empty($filter->module), t('Database: Proper module name for %filter in text format %format.', $t_args));
 
@@ -108,24 +128,21 @@ class FilterCRUDTestCase extends DrupalWebTestCase {
       // filters have been processed later.
       unset($format_filters[$name]);
     }
+    // Verify that all filters have been processed.
     $this->assertTrue(empty($format_filters), t('Database contains values for all filters in the saved format.'));
 
     // Verify filter_list_format().
-    $filters = filter_list_format($format->format, TRUE);
+    $filters = filter_list_format($format->format);
     $format_filters = $format->filters;
     foreach ($filters as $name => $filter) {
       $t_args = array('%format' => $format->name, '%filter' => $name);
-      // Check whether the filter is contained in the saved $format.
-      if (isset($format_filters[$name])) {
-        // Verify that filter status is properly stored.
-        $this->assertEqual($filter->status, $format_filters[$name]['status'], t('filter_list_format: Proper status for %filter in text format %format.', $t_args));
-        // Verify that filter settings were properly stored.
-        $this->assertEqual($filter->settings, isset($format_filters[$name]['settings']) ? $format_filters[$name]['settings'] : array(), t('filter_list_format: Proper filter settings for %filter in text format %format.', $t_args));
-      }
-      // Otherwise, the stored filter must be disabled.
-      else {
-        $this->assertTrue($filter->status == 0, t('filter_list_format: Proper status for disabled %filter in text format %format.', $t_args));
-      }
+
+      // Verify that filter status is properly stored.
+      $this->assertEqual($filter->status, $format_filters[$name]['status'], t('filter_list_format: Proper status for %filter in text format %format.', $t_args));
+
+      // Verify that filter settings were properly stored.
+      $this->assertEqual($filter->settings, isset($format_filters[$name]['settings']) ? $format_filters[$name]['settings'] : array(), t('filter_list_format: Proper filter settings for %filter in text format %format.', $t_args));
+
       // Verify that each filter has a module name assigned.
       $this->assertTrue(!empty($filter->module), t('filter_list_format: Proper module name for %filter in text format %format.', $t_args));
 
@@ -133,6 +150,7 @@ class FilterCRUDTestCase extends DrupalWebTestCase {
       // filters have been processed later.
       unset($format_filters[$name]);
     }
+    // Verify that all filters have been processed.
     $this->assertTrue(empty($format_filters), t('filter_list_format: Loaded filters contain values for all filters in the saved format.'));
   }
 }
@@ -204,6 +222,22 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     $this->assertTrue(filter_access(filter_format_load($full), $this->admin_user), t('Admin user may use Full HTML.'));
     $this->assertFalse(filter_access(filter_format_load($full), $this->web_user), t('Web user may not use Full HTML.'));
 
+    // Verify that disabled filters are not displayed.
+    $edit = array();
+    $edit['filters[filter_url][status]'] = FALSE;
+    $this->drupalPost('admin/config/content/formats/' . $filtered, $edit, t('Save configuration'));
+    $this->drupalGet('admin/config/content/formats/' . $filtered . '/configure');
+    $this->assertNoText(t('Convert URLs into links'), t('Disabled URL filter cannot be configured.'));
+    $this->drupalGet('admin/config/content/formats/' . $filtered . '/order');
+    $this->assertNoText(t('Convert URLs into links'), t('Disabled URL filter cannot be re-ordered.'));
+    $edit = array();
+    $edit['filters[filter_url][status]'] = 1;
+    $this->drupalPost('admin/config/content/formats/' . $filtered, $edit, t('Save configuration'));
+    $this->drupalGet('admin/config/content/formats/' . $filtered . '/configure');
+    $this->assertText(t('Convert URLs into links'), t('Enabled URL filter can be configured.'));
+    $this->drupalGet('admin/config/content/formats/' . $filtered . '/order');
+    $this->assertText(t('Convert URLs into links'), t('Enabled URL filter can be re-ordered.'));
+
     // Add an additional tag.
     $edit = array();
     $edit['settings[filter_html][allowed_html]'] = '<a> <em> <strong> <cite> <code> <ul> <ol> <li> <dl> <dt> <dd> <quote>';
@@ -243,15 +277,13 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     $format = $this->getFormat($edit['name']);
     $this->assertNotNull($format, t('Format found in database.'));
 
-    if ($format !== NULL) {
-      $this->assertFieldByName('roles[2]', '', t('Role found.'));
-      $this->assertFieldByName('filters[' . $second_filter . '][status]', '', t('Line break filter found.'));
-      $this->assertFieldByName('filters[' . $first_filter . '][status]', '', t('Url filter found.'));
+    $this->assertFieldByName('roles[2]', '', t('Role found.'));
+    $this->assertFieldByName('filters[' . $second_filter . '][status]', '', t('Line break filter found.'));
+    $this->assertFieldByName('filters[' . $first_filter . '][status]', '', t('Url filter found.'));
 
-      // Delete new filter.
-      $this->drupalPost('admin/config/content/formats/' . $format->format . '/delete', array(), t('Delete'));
-      $this->assertRaw(t('Deleted text format %format.', array('%format' => $edit['name'])), t('Format successfully deleted.'));
-    }
+    // Delete new filter.
+    $this->drupalPost('admin/config/content/formats/' . $format->format . '/delete', array(), t('Delete'));
+    $this->assertRaw(t('Deleted text format %format.', array('%format' => $edit['name'])), t('Format successfully deleted.'));
 
     // Allow authenticated users on full HTML.
     $format = filter_format_load($full);
@@ -274,7 +306,7 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     $text = $body . '<random>' . $extra_text . '</random>';
 
     $edit = array();
-    $langcode = FIELD_LANGUAGE_NONE;
+    $langcode = LANGUAGE_NONE;
     $edit["title[$langcode][0][value]"] = $this->randomName();
     $edit["body[$langcode][0][value]"] = $text;
     $edit["body[$langcode][0][value_format]"] = $filtered;
@@ -467,7 +499,7 @@ class FilterDefaultFormatTestCase extends DrupalWebTestCase {
       'group' => 'Filter',
     );
   }
- 
+
   function testDefaultTextFormats() {
     // Create two text formats, and two users. The first user has access to
     // both formats, but the second user only has access to the second one.
@@ -1024,11 +1056,11 @@ class FilterUnitTestCase extends DrupalUnitTestCase {
     $f = _filter_htmlcorrector('test <!--this is a comment-->');
     $this->assertEqual($f, 'test <!--this is a comment-->', t('HTML corrector -- Do not touch HTML comments.'));
 
-    $f = _filter_htmlcorrector('test <!-- comment <p>another 
-    <strong>multiple</strong> line 
+    $f = _filter_htmlcorrector('test <!-- comment <p>another
+    <strong>multiple</strong> line
     comment</p> -->');
-    $this->assertEqual($f, 'test <!-- comment <p>another 
-    <strong>multiple</strong> line 
+    $this->assertEqual($f, 'test <!-- comment <p>another
+    <strong>multiple</strong> line
     comment</p> -->', t('HTML corrector -- Do not touch HTML comments.'));
 
     $f = _filter_htmlcorrector('test <!-- comment <p>another comment</p> -->');

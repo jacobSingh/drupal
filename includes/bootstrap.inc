@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.320 2009-11-02 03:46:43 webchick Exp $
+// $Id: bootstrap.inc,v 1.331 2009-12-02 19:26:21 dries Exp $
 
 /**
  * @file
@@ -177,6 +177,13 @@ define('DRUPAL_AUTHENTICATED_RID', 2);
  * http://en.wikipedia.org/wiki/Kilobyte.
  */
 define('DRUPAL_KILOBYTE', 1024);
+
+/**
+ * The language code used when no language is explicitly assigned.
+ *
+ * Defined by ISO639-2 for "No linguistic content / Not applicable".
+ */
+define('LANGUAGE_NONE', 'zxx');
 
 /**
  * The type of language used to define the content language.
@@ -701,12 +708,12 @@ function drupal_get_filename($type, $name, $filename = NULL) {
  */
 function variable_initialize($conf = array()) {
   // NOTE: caching the variables improves performance by 20% when serving cached pages.
-  if ($cached = cache_get('variables', 'cache')) {
+  if ($cached = cache_get('variables', 'cache_bootstrap')) {
     $variables = $cached->data;
   }
   else {
     $variables = array_map('unserialize', db_query('SELECT name, value FROM {variable}')->fetchAllKeyed());
-    cache_set('variables', $variables);
+    cache_set('variables', $variables, 'cache_bootstrap');
   }
 
   foreach ($conf as $name => $value) {
@@ -750,7 +757,7 @@ function variable_set($name, $value) {
 
   db_merge('variable')->key(array('name' => $name))->fields(array('value' => serialize($value)))->execute();
 
-  cache_clear_all('variables', 'cache');
+  cache_clear_all('variables', 'cache_bootstrap');
 
   $conf[$name] = $value;
 }
@@ -769,7 +776,7 @@ function variable_del($name) {
   db_delete('variable')
     ->condition('name', $name)
     ->execute();
-  cache_clear_all('variables', 'cache');
+  cache_clear_all('variables', 'cache_bootstrap');
 
   unset($conf[$name]);
 }
@@ -782,14 +789,27 @@ function variable_del($name) {
  * from a form submission, the contents of a shopping cart, or other user-
  * specific content that should not be cached and displayed to other users.
  *
+ * @param $check_only
+ *   (optional) Set to TRUE to only return whether a previous call found a
+ *   cache entry.
+ *
  * @return
  *   The cache object, if the page was found in the cache, NULL otherwise.
  */
-function drupal_page_get_cache() {
+function drupal_page_get_cache($check_only = FALSE) {
   global $base_root;
+  static $cache_hit = FALSE;
+
+  if ($check_only) {
+    return $cache_hit;
+  }
 
   if (drupal_page_is_cacheable()) {
-    return cache_get($base_root . request_uri(), 'cache_page');
+    $cache = cache_get($base_root . request_uri(), 'cache_page');
+    if ($cache !== FALSE) {
+      $cache_hit = TRUE;
+    }
+    return $cache;
   }
 }
 
@@ -797,9 +817,10 @@ function drupal_page_get_cache() {
  * Determine the cacheability of the current page.
  *
  * @param $allow_caching
- *  Set to FALSE if you want to prevent this page to get cached.
+ *   Set to FALSE if you want to prevent this page to get cached.
+ *
  * @return
- *  TRUE if the current page can be cached, FALSE otherwise.
+ *   TRUE if the current page can be cached, FALSE otherwise.
  */
 function drupal_page_is_cacheable($allow_caching = NULL) {
   $allow_caching_static = &drupal_static(__FUNCTION__, TRUE);
@@ -818,7 +839,9 @@ function drupal_page_is_cacheable($allow_caching = NULL) {
  *   The name of the bootstrap hook we wish to invoke.
  */
 function bootstrap_invoke_all($hook) {
-  foreach (module_list(TRUE, TRUE) as $module) {
+  // _drupal_bootstrap_page_cache() already loaded the bootstrap modules, so we
+  // don't need to tell module_list() to reset its bootstrap list.
+  foreach (module_list(FALSE, TRUE) as $module) {
     drupal_load('module', $module);
     module_invoke($module, $hook);
   }
@@ -1149,11 +1172,36 @@ function drupal_unpack($obj, $field = 'data') {
 /**
  * Encode special characters in a plain-text string for display as HTML.
  *
- * Uses drupal_validate_utf8 to prevent cross site scripting attacks on
+ * Also validates strings as UTF-8 to prevent cross site scripting attacks on
  * Internet Explorer 6.
+ *
+ * @param $text
+ *   The text to be checked or processed.
+ * @return
+ *   An HTML safe version of $text, or an empty string if $text is not
+ *   valid UTF-8.
+ * @see drupal_validate_utf8().
  */
 function check_plain($text) {
-  return drupal_validate_utf8($text) ? htmlspecialchars($text, ENT_QUOTES) : '';
+  // We do not want to use drupal_static() since PHP version will never change
+  // during a request.
+  static $php525;
+
+  if (!isset($php525)) {
+    $php525 = version_compare(PHP_VERSION, '5.2.5', '>=');
+  }
+  // We duplicate the preg_match() to validate strings as UTF-8 from
+  // drupal_validate_utf8() here. This avoids the overhead of an additional
+  // function call, since check_plain() may be called hundreds of times during
+  // a request. For PHP 5.2.5+, this check for valid UTF-8 should be handled
+  // internally by PHP in htmlspecialchars().
+  // @see http://www.php.net/releases/5_2_5.php
+  // @todo remove this when support for either IE6 or PHP < 5.2.5 is dropped.
+
+  if ($php525) {
+    return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+  }
+  return (preg_match('/^./us', $text) == 1) ? htmlspecialchars($text, ENT_QUOTES, 'UTF-8') : '';
 }
 
 /**
@@ -1237,6 +1285,8 @@ function request_uri() {
  *
  * @see watchdog_severity_levels()
  * @see hook_watchdog()
+ * @see DatabaseConnection::rollback()
+ * @see DatabaseTransaction::rollback()
  */
 function watchdog($type, $message, $variables = array(), $severity = WATCHDOG_NOTICE, $link = NULL) {
   global $user, $base_root;
@@ -1421,16 +1471,11 @@ function drupal_anonymous_user($session = '') {
  *   function called from drupal_bootstrap (recursion).
  * @return
  *   The most recently completed phase.
- *   
+ *
  */
 function drupal_bootstrap($phase = NULL, $new_phase = TRUE) {
-  $final_phase = &drupal_static(__FUNCTION__ . '_final_phase');
-  // When not recursing, store the phase name so it's not forgotten while
-  // recursing.
-  if ($new_phase) {
-    $final_phase = $phase;
-  }
-  $phases = &drupal_static(__FUNCTION__ . '_phases', array(
+  // Not drupal_static(), because does not depend on any run-time information.
+  static $phases = array(
     DRUPAL_BOOTSTRAP_CONFIGURATION,
     DRUPAL_BOOTSTRAP_PAGE_CACHE,
     DRUPAL_BOOTSTRAP_DATABASE,
@@ -1439,15 +1484,59 @@ function drupal_bootstrap($phase = NULL, $new_phase = TRUE) {
     DRUPAL_BOOTSTRAP_PAGE_HEADER,
     DRUPAL_BOOTSTRAP_LANGUAGE,
     DRUPAL_BOOTSTRAP_FULL,
-  ));
-  $completed_phase = &drupal_static(__FUNCTION__ . '_completed_phase', -1);
+  );
+  // Not drupal_static(), because the only legitimate API to control this is to
+  // call drupal_bootstrap() with a new phase parameter.
+  static $final_phase;
+  // Not drupal_static(), because it's impossible to roll back to an earlier
+  // bootstrap state.
+  static $completed_phase = -1;
 
+  // When not recursing, store the phase name so it's not forgotten while
+  // recursing.
+  if ($new_phase) {
+    $final_phase = $phase;
+  }
   if (isset($phase)) {
     // Call a phase if it has not been called before and is below the requested
     // phase.
     while ($phases && $phase > $completed_phase && $final_phase > $completed_phase) {
       $current_phase = array_shift($phases);
-      _drupal_bootstrap($current_phase);
+      switch ($current_phase) {
+        case DRUPAL_BOOTSTRAP_CONFIGURATION:
+          _drupal_bootstrap_configuration();
+          break;
+
+        case DRUPAL_BOOTSTRAP_PAGE_CACHE:
+          _drupal_bootstrap_page_cache();
+          break;
+
+        case DRUPAL_BOOTSTRAP_DATABASE:
+          _drupal_bootstrap_database();
+          break;
+
+        case DRUPAL_BOOTSTRAP_VARIABLES:
+          _drupal_bootstrap_variables();
+          break;
+
+        case DRUPAL_BOOTSTRAP_SESSION:
+          require_once DRUPAL_ROOT . '/' . variable_get('session_inc', 'includes/session.inc');
+          drupal_session_initialize();
+          break;
+
+        case DRUPAL_BOOTSTRAP_PAGE_HEADER:
+          _drupal_bootstrap_page_header();
+          break;
+
+        case DRUPAL_BOOTSTRAP_LANGUAGE:
+          drupal_language_initialize();
+          break;
+
+        case DRUPAL_BOOTSTRAP_FULL:
+          require_once DRUPAL_ROOT . '/includes/common.inc';
+          _drupal_bootstrap_full();
+          break;
+      }
       // This function is reentrant. Only update the completed phase when the
       // current call actually resulted in a progress in the bootstrap process.
       if ($current_phase > $completed_phase) {
@@ -1459,125 +1548,126 @@ function drupal_bootstrap($phase = NULL, $new_phase = TRUE) {
 }
 
 /**
- * Return the current bootstrap phase for this Drupal process. The
- * current phase is the one most recently completed by
- * drupal_bootstrap().
+ * Bootstrap configuration: Setup script environment and load settings.php.
+ */
+function _drupal_bootstrap_configuration() {
+  drupal_environment_initialize();
+  // Start a page timer:
+  timer_start('page');
+  // Initialize the configuration, including variables from settings.php.
+  drupal_settings_initialize();
+}
+
+/**
+ * Bootstrap page cache: Try to serve a page from cache.
+ */
+function _drupal_bootstrap_page_cache() {
+  global $user;
+
+  // Allow specifying special cache handlers in settings.php, like
+  // using memcached or files for storing cache information.
+  require_once DRUPAL_ROOT . '/' . variable_get('cache_inc', 'includes/cache.inc');
+  // Check for a cache mode force from settings.php.
+  if (variable_get('page_cache_without_database')) {
+    $cache_mode = CACHE_NORMAL;
+  }
+  else {
+    drupal_bootstrap(DRUPAL_BOOTSTRAP_VARIABLES, FALSE);
+    $cache_mode = variable_get('cache');
+  }
+  drupal_block_denied(ip_address());
+  // If there is no session cookie and cache is enabled (or forced), try
+  // to serve a cached page.
+  if (!isset($_COOKIE[session_name()]) && $cache_mode == CACHE_NORMAL) {
+    // Make sure there is a user object because it's timestamp will be
+    // checked, hook_boot might check for anonymous user etc.
+    $user = drupal_anonymous_user();
+    // Get the page from the cache.
+    $cache = drupal_page_get_cache();
+    // If there is a cached page, display it.
+    if (is_object($cache)) {
+      // If the skipping of the bootstrap hooks is not enforced, call
+      // hook_boot.
+      if (variable_get('page_cache_invoke_hooks', TRUE)) {
+        bootstrap_invoke_all('boot');
+      }
+      header('X-Drupal-Cache: HIT');
+      drupal_serve_page_from_cache($cache);
+      // If the skipping of the bootstrap hooks is not enforced, call
+      // hook_exit.
+      if (variable_get('page_cache_invoke_hooks', TRUE)) {
+        bootstrap_invoke_all('exit');
+      }
+      // We are done.
+      exit;
+    }
+  }
+}
+
+/**
+ * Bootstrap database: Initialize database system and register autoload functions.
+ */
+function _drupal_bootstrap_database() {
+  // The user agent header is used to pass a database prefix in the request when
+  // running tests. However, for security reasons, it is imperative that we
+  // validate we ourselves made the request.
+  if (isset($_SERVER['HTTP_USER_AGENT']) && (strpos($_SERVER['HTTP_USER_AGENT'], "simpletest") !== FALSE) && !drupal_valid_test_ua($_SERVER['HTTP_USER_AGENT'])) {
+    header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
+    exit;
+  }
+  // Initialize the database system. Note that the connection
+  // won't be initialized until it is actually requested.
+  require_once DRUPAL_ROOT . '/includes/database/database.inc';
+
+  // Set Drupal's watchdog as the logging callback.
+  Database::setLoggingCallback('watchdog', WATCHDOG_NOTICE, WATCHDOG_ERROR);
+
+  // Register autoload functions so that we can access classes and interfaces.
+  spl_autoload_register('drupal_autoload_class');
+  spl_autoload_register('drupal_autoload_interface');
+}
+
+/**
+ * Bootstrap variables: Load system variables and all enabled bootstrap modules.
+ */
+function _drupal_bootstrap_variables() {
+  global $conf;
+
+  // Load variables from the database, but do not overwrite variables set in settings.php.
+  $conf = variable_initialize(isset($conf) ? $conf : array());
+  // Load bootstrap modules.
+  require_once DRUPAL_ROOT . '/includes/module.inc';
+  module_load_all(TRUE);
+}
+
+/**
+ * Bootstrap page header: Invoke hook_boot(), intialize locking system, and send default HTTP headers.
+ */
+function _drupal_bootstrap_page_header() {
+  bootstrap_invoke_all('boot');
+  if (!drupal_page_get_cache(TRUE) && drupal_page_is_cacheable()) {
+    header('X-Drupal-Cache: MISS');
+  }
+
+  // Prepare for non-cached page workflow.
+  require_once DRUPAL_ROOT . '/' . variable_get('lock_inc', 'includes/lock.inc');
+  lock_initialize();
+
+  if (!drupal_is_cli()) {
+    ob_start();
+    drupal_page_header();
+  }
+}
+
+/**
+ * Returns the current bootstrap phase for this Drupal process.
  *
- * @see drupal_bootstrap
+ * The current phase is the one most recently completed by drupal_bootstrap().
+ *
+ * @see drupal_bootstrap()
  */
 function drupal_get_bootstrap_phase() {
   return drupal_bootstrap();
-}
-
-function _drupal_bootstrap($phase) {
-  global $conf, $user;
-  static $cache;
-
-  switch ($phase) {
-
-    case DRUPAL_BOOTSTRAP_CONFIGURATION:
-      drupal_environment_initialize();
-      // Start a page timer:
-      timer_start('page');
-      // Initialize the configuration, including variables from settings.php.
-      drupal_settings_initialize();
-      break;
-
-    case DRUPAL_BOOTSTRAP_PAGE_CACHE:
-      // Allow specifying special cache handlers in settings.php, like
-      // using memcached or files for storing cache information.
-      require_once DRUPAL_ROOT . '/' . variable_get('cache_inc', 'includes/cache.inc');
-      // Check for a cache mode force from settings.php.
-      if (variable_get('page_cache_without_database')) {
-        $cache_mode = CACHE_NORMAL;
-      }
-      else {
-        drupal_bootstrap(DRUPAL_BOOTSTRAP_VARIABLES, FALSE);
-        $cache_mode = variable_get('cache');
-      }
-      drupal_block_denied(ip_address());
-      // If there is no session cookie and cache is enabled (or forced), try
-      // to serve a cached page.
-      if (!isset($_COOKIE[session_name()]) && $cache_mode == CACHE_NORMAL) {
-        // Make sure there is a user object because it's timestamp will be
-        // checked, hook_boot might check for anonymous user etc.
-        $user = drupal_anonymous_user();
-        // Get the page from the cache.
-        $cache = drupal_page_get_cache();
-        // If there is a cached page, display it.
-        if (is_object($cache)) {
-          // If the skipping of the bootstrap hooks is not enforced, call
-          // hook_boot.
-          if (variable_get('page_cache_invoke_hooks', TRUE)) {
-            bootstrap_invoke_all('boot');
-          }
-          header('X-Drupal-Cache: HIT');
-          drupal_serve_page_from_cache($cache);
-          // If the skipping of the bootstrap hooks is not enforced, call
-          // hook_exit.
-          if (variable_get('page_cache_invoke_hooks', TRUE)) {
-            bootstrap_invoke_all('exit');
-          }
-          // We are done.
-          exit;
-        }
-      }
-      break;
-
-    case DRUPAL_BOOTSTRAP_DATABASE:
-      // The user agent header is used to pass a database prefix in the request when
-      // running tests. However, for security reasons, it is imperative that we
-      // validate we ourselves made the request.
-      if (isset($_SERVER['HTTP_USER_AGENT']) && (strpos($_SERVER['HTTP_USER_AGENT'], "simpletest") !== FALSE) && !drupal_valid_test_ua($_SERVER['HTTP_USER_AGENT'])) {
-        header($_SERVER['SERVER_PROTOCOL'] . ' 403 Forbidden');
-        exit;
-      }
-      // Initialize the database system. Note that the connection
-      // won't be initialized until it is actually requested.
-      require_once DRUPAL_ROOT . '/includes/database/database.inc';
-      // Register autoload functions so that we can access classes and interfaces.
-      spl_autoload_register('drupal_autoload_class');
-      spl_autoload_register('drupal_autoload_interface');
-      break;
-
-    case DRUPAL_BOOTSTRAP_VARIABLES:
-      // Load variables from the database, but do not overwrite variables set in settings.php.
-      $conf = variable_initialize(isset($conf) ? $conf : array());
-      // Load bootstrap modules.
-      require_once DRUPAL_ROOT . '/includes/module.inc';
-      module_load_all(TRUE);
-      break;
-
-    case DRUPAL_BOOTSTRAP_SESSION:
-      require_once DRUPAL_ROOT . '/' . variable_get('session_inc', 'includes/session.inc');
-      drupal_session_initialize();
-      break;
-
-    case DRUPAL_BOOTSTRAP_PAGE_HEADER:
-      bootstrap_invoke_all('boot');
-      if (!$cache && drupal_page_is_cacheable()) {
-        header('X-Drupal-Cache: MISS');
-      }
-
-      // Prepare for non-cached page workflow.
-      require_once DRUPAL_ROOT . '/' . variable_get('lock_inc', 'includes/lock.inc');
-      lock_initialize();
-
-      if (!drupal_is_cli()) {
-        ob_start();
-        drupal_page_header();
-      }
-      break;
-
-    case DRUPAL_BOOTSTRAP_LANGUAGE:
-      drupal_language_initialize();
-      break;
-
-    case DRUPAL_BOOTSTRAP_FULL:
-      require_once DRUPAL_ROOT . '/includes/common.inc';
-      _drupal_bootstrap_full();
-      break;
-  }
 }
 
 /**
@@ -1935,7 +2025,7 @@ function _registry_check_code($type, $name = NULL) {
 
   if (!isset($lookup_cache)) {
     $lookup_cache = array();
-    if ($cache = cache_get('lookup_cache', 'cache_registry')) {
+    if ($cache = cache_get('lookup_cache', 'cache_bootstrap')) {
       $lookup_cache = $cache->data;
     }
   }
@@ -1952,7 +2042,7 @@ function _registry_check_code($type, $name = NULL) {
   // changes to the lookup cache for this request.
   if ($type == REGISTRY_WRITE_LOOKUP_CACHE) {
     if ($cache_update_needed) {
-      cache_set('lookup_cache', $lookup_cache, 'cache_registry');
+      cache_set('lookup_cache', $lookup_cache, 'cache_bootstrap');
     }
     return;
   }
@@ -2010,6 +2100,83 @@ function registry_rebuild() {
 /**
  * Central static variable storage.
  *
+ * All functions requiring a static variable to persist or cache data within
+ * a single page request are encouraged to use this function unless it is
+ * absolutely certain that the static variable will not need to be reset during
+ * the page request. By centralizing static variable storage through this
+ * function, other functions can rely on a consistent API for resetting any
+ * other function's static variables.
+ *
+ * Example:
+ * @code
+ * function language_list($field = 'language') {
+ *   $languages = &drupal_static(__FUNCTION__);
+ *   if (!isset($languages)) {
+ *     // If this function is being called for the first time after a reset,
+ *     // query the database and execute any other code needed to retrieve
+ *     // information about the supported languages.
+ *     ...
+ *   }
+ *   if (!isset($languages[$field])) {
+ *     // If this function is being called for the first time for a particular
+ *     // index field, then execute code needed to index the information already
+ *     // available in $languages by the desired field.
+ *     ...
+ *   }
+ *   // Subsequent invocations of this function for a particular index field
+ *   // skip the above two code blocks and quickly return the already indexed
+ *   // information.
+ *   return $languages[$field];
+ * }
+ * function locale_translate_overview_screen() {
+ *   // When building the content for the translations overview page, make
+ *   // sure to get completely fresh information about the supported languages.
+ *   drupal_static_reset('language_list');
+ *   ...
+ * }
+ * @endcode
+ *
+ * In a few cases, a function can have certainty that there is no legitimate
+ * use-case for resetting that function's static variable. This is rare,
+ * because when writing a function, it's hard to forecast all the situations in
+ * which it will be used. A guideline is that if a function's static variable
+ * does not depend on any information outside of the function that might change
+ * during a single page request, then it's ok to use the "static" keyword
+ * instead of the drupal_static() function.
+ *
+ * Example:
+ * @code
+ * function actions_do(...) {
+ *   // $stack tracks the number of recursive calls.
+ *   static $stack;
+ *   $stack++;
+ *   if ($stack > variable_get('actions_max_stack', 35)) {
+ *     ...
+ *     return;
+ *   }
+ *   ...
+ *   $stack--;
+ * }
+ * @endcode
+ *
+ * In a few cases, a function needs a resettable static variable, but the
+ * function is called many times (100+) during a single page request, so
+ * every microsecond of execution time that can be removed from the function
+ * counts. These functions can use a more cumbersome, but faster variant of
+ * calling drupal_static(). For benchmarks and background on this variant,
+ * please see http://drupal.org/node/619666.
+ *
+ * Example:
+ * @code
+ * function user_access($string, $account = NULL) {
+ *   // Use the advanced drupal_static() pattern, since this is called very often.
+ *   static $drupal_static = array();
+ *   isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
+ *   $perm = &$drupal_static[__FUNCTION__];
+ *   ...
+ * }
+ * @endcode
+ *
  * @param $name
  *   Globally unique name for the variable. For a function with only one static,
  *   variable, the function name (e.g. via the PHP magic __FUNCTION__ constant)
@@ -2021,31 +2188,43 @@ function registry_rebuild() {
  *   TRUE to reset a specific named variable, or all variables if $name is NULL.
  *   Resetting every variable should only be used, for example, for running
  *   unit tests with a clean environment. Should be used only though via
- *   function drupal_static_reset().
+ *   function drupal_static_reset() and the return value should not be used in
+ *   this case.
  *
  * @return
- *   Returns a variable by reference if $reset is FALSE.
+ *   Returns a variable by reference.
+ *
+ * @see drupal_static_reset()
  */
 function &drupal_static($name, $default_value = NULL, $reset = FALSE) {
-  static $data = array();
-
-  // Reset a single value, or all values.
+  static $data = array(), $default = array();
+  if (!isset($name)) {
+    // All variables are reset. This needs to be done one at a time so that
+    // references returned by earlier invocations of drupal_static() also get
+    // reset.
+    foreach ($default as $name => $value) {
+      $data[$name] = $value;
+    }
+    // As the function returns a reference, the return should always be a
+    // variable.
+    return $data;
+  }
   if ($reset) {
-    if (isset($name)) {
-      unset($data[$name]);
+    // The reset means the default is loaded.
+    if (array_key_exists($name, $default)) {
+      $data[$name] = $default[$name];
     }
     else {
-      $data = array();
+      // Reset was called before a default is set and yet a variable must be
+      // returned.
+      return $data;
     }
-    // We must return a reference to a variable.
-    $dummy = NULL;
-    return $dummy;
   }
-
-  if (!isset($data[$name])) {
-    $data[$name] = $default_value;
+  elseif (!array_key_exists($name, $data)) {
+    // Store the default value internally and also copy it to the reference to
+    // be returned.
+    $default[$name] = $data[$name] = $default_value;
   }
-
   return $data[$name];
 }
 

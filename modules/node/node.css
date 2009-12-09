@@ -1,4 +1,4 @@
-/* $Id: node.css,v 1.9 2009-11-03 04:35:01 webchick Exp $ */
+/* $Id: node.css,v 1.11 2009-11-17 02:50:41 webchick Exp $ */
 
 .node-unpublished {
   background-color: #fff4f4;
@@ -7,10 +7,10 @@
   background-color: #ffffea;
 }
 /* Override the default multiselect layout in system.css. */
-#node-admin-content dl.multiselect dd.b, dl.multiselect dd.b .form-item {
+#node-admin-content dl.multiselect dd, dl.multiselect dd .form-item {
   width: 20em; /* 6em label + 14em select */
 }
-#node-admin-content dl.multiselect dd.b .form-item label {
+#node-admin-content dl.multiselect dd .form-item label {
   display: block;
   float: left; /* LTR */
   width: 6em;
@@ -23,10 +23,6 @@
 }
 td.revision-current {
   background: #ffc;
-}
-.node-form .form-text {
-  display: block;
-  width: 95%;
 }
 .node-form .container-inline .form-text {
   display: inline;

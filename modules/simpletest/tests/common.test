@@ -1,5 +1,5 @@
 <?php
-// $Id: common.test,v 1.86 2009-11-03 06:47:23 webchick Exp $
+// $Id: common.test,v 1.94 2009-12-03 15:33:42 dries Exp $
 
 /**
  * @file
@@ -56,8 +56,11 @@ class DrupalAlterTestCase extends DrupalWebTestCase {
 
 /**
  * Tests for URL generation functions.
+ *
+ * url() calls module_implements(), which may issue a db query, which requires
+ * inheriting from a web test case rather than a unit test case.
  */
-class CommonURLUnitTest extends DrupalUnitTestCase {
+class CommonURLUnitTest extends DrupalWebTestCase {
   public static function getInfo() {
     return array(
       'name' => 'URL generation tests',
@@ -294,6 +297,42 @@ class CommonURLUnitTest extends DrupalUnitTestCase {
     $query = array($this->randomName(5) => $this->randomName(5));
     $result = url($url, array('query' => $query));
     $this->assertEqual($url . '&' . http_build_query($query, '', '&'), $result, t('External URL query string can be extended with a custom query string in $options.'));
+  }
+}
+
+/**
+ * Tests for the check_plain() and filter_xss() functions.
+ */
+class CommonXssUnitTest extends DrupalUnitTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'String filtering tests',
+      'description' => 'Confirm that check_plain() and filter_xss() work correctly, including invalid multi-byte sequences.',
+      'group' => 'System',
+    );
+  }
+
+  /**
+   * Check that invalid multi-byte sequences are rejected.
+   */
+  function testInvalidMultiByte() {
+     $text = check_plain("Foo\xC0barbaz");
+     $this->assertEqual($text, '', 'check_plain() rejects invalid sequence "Foo\xC0barbaz"');
+     $text = check_plain("Fooÿñ");
+     $this->assertEqual($text, "Fooÿñ", 'check_plain() accepts valid sequence "Fooÿñ"');
+     $text = filter_xss("Foo\xC0barbaz");
+     $this->assertEqual($text, '', 'filter_xss() rejects invalid sequence "Foo\xC0barbaz"');
+     $text = filter_xss("Fooÿñ");
+     $this->assertEqual($text, "Fooÿñ", 'filter_xss() accepts valid sequence Fooÿñ');
+  }
+
+  /**
+   * Check that special characters are escaped.
+   */
+  function testEscaping() {
+     $text = check_plain("<script>");
+     $this->assertEqual($text, '&lt;script&gt;', 'check_plain() escapes &lt;script&gt;');
   }
 }
 
@@ -551,16 +590,14 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     $expected = 'font-size:254px;';
 
     // Create a node, using the PHP filter that tests drupal_add_css().
+    $php_format_id = db_query_range('SELECT format FROM {filter_format} WHERE name = :name', 0, 1, array(':name' => 'PHP code'))->fetchField();
     $settings = array(
       'type' => 'page',
       'body' => array(
-        FIELD_LANGUAGE_NONE => array(
+        LANGUAGE_NONE => array(
           array(
             'value' => t('This tests the inline CSS!') . "<?php drupal_add_css('$css', 'inline'); ?>",
-            // The "PHP code" format is always the most recent one added, since
-            // the PHP module was enabled in the setUp() method of the current
-            // test.
-            'format' => db_query("SELECT MAX(format) FROM {filter_format}")->fetchField(),
+            'format' => $php_format_id,
           ),
         ),
       ),
@@ -760,6 +797,8 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
   }
 
   function testDrupalHTTPRequest() {
+    global $is_https;
+
     // Parse URL schema.
     $missing_scheme = drupal_http_request('example.com/path');
     $this->assertEqual($missing_scheme->code, -1002, t('Returned with "-1002" error code.'));
@@ -781,18 +820,23 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
     $this->assertEqual($result->code, '404', t('Result code is 404'));
     $this->assertEqual($result->status_message, 'Not Found', t('Result status message is "Not Found"'));
 
-    // Test that timeout is respected. The test machine is expected to be able
-    // to make the connection (i.e. complete the fsockopen()) in 2 seconds and
-    // return within a total of 5 seconds. If the test machine is extremely
-    // slow, the test will fail. fsockopen() has been seen to time out in
-    // slightly less than the specified timeout, so allow a little slack on the
-    // minimum expected time (i.e. 1.8 instead of 2).
-    timer_start(__METHOD__);
-    $result = drupal_http_request(url('system-test/sleep/10', array('absolute' => TRUE)), array('timeout' => 2));
-    $time = timer_read(__METHOD__) / 1000;
-    $this->assertTrue(1.8 < $time && $time < 5, t('Request timed out (%time seconds).', array('%time' => $time)));
-    $this->assertTrue($result->error, t('An error message was returned.'));
-    $this->assertEqual($result->code, HTTP_REQUEST_TIMEOUT, t('Proper error code was returned.'));
+    // Skip the timeout tests when the testing environment is HTTPS because
+    // stream_set_timeout() does not work for SSL connections.
+    // @link http://bugs.php.net/bug.php?id=47929
+    if (!$is_https) {
+      // Test that timeout is respected. The test machine is expected to be able
+      // to make the connection (i.e. complete the fsockopen()) in 2 seconds and
+      // return within a total of 5 seconds. If the test machine is extremely
+      // slow, the test will fail. fsockopen() has been seen to time out in
+      // slightly less than the specified timeout, so allow a little slack on
+      // the minimum expected time (i.e. 1.8 instead of 2).
+      timer_start(__METHOD__);
+      $result = drupal_http_request(url('system-test/sleep/10', array('absolute' => TRUE)), array('timeout' => 2));
+      $time = timer_read(__METHOD__) / 1000;
+      $this->assertTrue(1.8 < $time && $time < 5, t('Request timed out (%time seconds).', array('%time' => $time)));
+      $this->assertTrue($result->error, t('An error message was returned.'));
+      $this->assertEqual($result->code, HTTP_REQUEST_TIMEOUT, t('Proper error code was returned.'));
+    }
   }
 
   function testDrupalHTTPRequestBasicAuth() {
@@ -800,7 +844,7 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
     $password = $this->randomName();
     $url = url('system-test/auth', array('absolute' => TRUE));
 
-    $auth = str_replace('http://', 'http://' . $username . ':' . $password . '@', $url);
+    $auth = str_replace('://', '://' . $username . ':' . $password . '@', $url);
     $result = drupal_http_request($auth);
 
     $this->drupalSetContent($result->data);
@@ -1519,6 +1563,29 @@ class DrupalErrorCollectionUnitTest extends DrupalWebTestCase {
 }
 
 /**
+ * Test the drupal_parse_info_file() API function.
+ */
+class ParseInfoFilesTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Parsing .info files',
+      'description' => 'Tests parsing .info files.',
+      'group' => 'System',
+    );
+  }
+
+  /**
+   * Parse an example .info file an verify the results.
+   */
+  function testParseInfoFile() {
+    $info_values = drupal_parse_info_file(drupal_get_path('module', 'simpletest') . '/tests/common_test_info.txt');
+    $this->assertEqual($info_values['simple_string'], 'A simple string', t('Simple string value was parsed correctly.'), t('System'));
+    $this->assertEqual($info_values['simple_constant'], WATCHDOG_INFO, t('Constant value was parsed correctly.'), t('System'));
+    $this->assertEqual($info_values['double_colon'], 'dummyClassName::', t('Value containing double-colon was parsed correctly.'), t('System'));
+  }
+}
+
+/**
  * Tests for the format_date() function.
  */
 class FormatDateUnitTest extends DrupalWebTestCase {
@@ -1641,5 +1708,57 @@ class DrupalAttributesUnitTest extends DrupalUnitTestCase {
 
     // Verify empty attributes array is rendered.
     $this->assertIdentical(drupal_attributes(array()), '', t('Empty attributes array.'));
+  }
+}
+
+/**
+ * Tests converting PHP variables to JSON strings and back.
+ */
+class DrupalJSONTest extends DrupalUnitTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'JSON',
+      'description' => 'Perform unit tests on the drupal_json_encode() and drupal_json_decode() functions.',
+      'group' => 'System',
+    );
+  }
+
+  /**
+   * Tests converting PHP variables to JSON strings and back.
+   */
+  function testJSON() {
+    // Setup a string with the full ASCII table.
+    // @todo: Add tests for non-ASCII characters and Unicode.
+    $str = '';
+    for ($i=0; $i < 128; $i++) {
+      $str .= chr($i);
+    }
+    // Characters that must be escaped.
+    $html_unsafe = array('<', '>', '&');
+
+    // Verify there aren't character encoding problems with the source string.
+    $this->assertIdentical(strlen($str), 128, t('A string with the full ASCII table has the correct length.'));
+    foreach ($html_unsafe as $char) {
+      $this->assertTrue(strpos($str, $char) > 0, t('A string with the full ASCII table includes @s.', array('@s' => $char)));
+    }
+
+    // Verify that JSON encoding produces a string with all of the characters.
+    $json = drupal_json_encode($str);
+    $this->assertTrue(strlen($json) > strlen($str), t('A JSON encoded string is larger than the source string.'));
+
+    // Verify that encoding/decoding is reversible.
+    $json_decoded = drupal_json_decode($json);
+    $this->assertIdentical($str, $json_decoded, t('Encoding a string to JSON and decoding back results in the original string.'));
+
+    // Verify reversibility for structured data. Also verify that necessary
+    // characters are escaped.
+    $source = array(TRUE, FALSE, 0, 1, '0', '1', $str, array('key1' => $str, 'key2' => array('nested' => TRUE)));
+    $json = drupal_json_encode($source);
+    foreach ($html_unsafe as $char) {
+      $this->assertTrue(strpos($json, $char) === FALSE, t('A JSON encoded string does not contain @s.', array('@s' => $char)));
+    }
+    $json_decoded = drupal_json_decode($json);
+    $this->assertNotIdentical($source, $json, t('An array encoded in JSON is not identical to the source.'));
+    $this->assertIdentical($source, $json_decoded, t('Encoding structured data to JSON and decoding back results in the original data.'));
   }
 }

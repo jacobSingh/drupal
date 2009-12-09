@@ -1,5 +1,5 @@
 <?php
-// $Id: node.api.php,v 1.42 2009-11-01 12:11:10 dries Exp $
+// $Id: node.api.php,v 1.47 2009-12-01 19:00:18 dries Exp $
 
 /**
  * @file
@@ -63,7 +63,7 @@ function hook_node_grants($account, $op) {
  * - 'gid': A 'grant ID' from hook_node_grants().
  * - 'grant_view': If set to TRUE a user that has been identified as a member
  *   of this gid within this realm can view this node.
- * - 'grant_edit': If set to TRUE a user that has been identified as a member
+ * - 'grant_update': If set to TRUE a user that has been identified as a member
  *   of this gid within this realm can edit this node.
  * - 'grant_delete': If set to TRUE a user that has been identified as a member
  *   of this gid within this realm can delete this node.
@@ -74,7 +74,7 @@ function hook_node_grants($account, $op) {
  *
  * @ingroup node_access
  */
-function hook_node_access_records(stdClass $node) {
+function hook_node_access_records($node) {
   if (node_access_example_disabling()) {
     return;
   }
@@ -138,7 +138,7 @@ function hook_node_access_records(stdClass $node) {
  *
  * @ingroup node_access
  */
-function hook_node_access_records_alter(&$grants, stdClass $node) {
+function hook_node_access_records_alter(&$grants, $node) {
   // Our module allows editors to tag specific articles as 'preview'
   // content using the taxonomy system. If the node being saved
   // contains one of the preview terms defined in our variable
@@ -216,19 +216,20 @@ function hook_node_grants_alter(&$grants, $account, $op) {
 /**
  * Add mass node operations.
  *
- * This hook enables modules to inject custom operations into the mass operations
- * dropdown found at admin/content, by associating a callback function with
- * the operation, which is called when the form is submitted. The callback function
- * receives one initial argument, which is an array of the checked nodes.
+ * This hook enables modules to inject custom operations into the mass
+ * operations dropdown found at admin/content, by associating a callback
+ * function with the operation, which is called when the form is submitted. The
+ * callback function receives one initial argument, which is an array of the
+ * checked nodes.
  *
  * @return
  *   An array of operations. Each operation is an associative array that may
  *   contain the following key-value pairs:
- *   - "label": Required. The label for the operation, displayed in the dropdown menu.
- *   - "callback": Required. The function to call for the operation.
- *   - "callback arguments": Optional. An array of additional arguments to pass to
- *     the callback function.
- *
+ *   - 'label': Required. The label for the operation, displayed in the dropdown
+ *     menu.
+ *   - 'callback': Required. The function to call for the operation.
+ *   - 'callback arguments': Optional. An array of additional arguments to pass
+ *     to the callback function.
  */
 function hook_node_operations() {
   $operations = array(
@@ -260,26 +261,32 @@ function hook_node_operations() {
 }
 
 /**
- * Act on node deletion.
+ * Respond to node deletion.
+ *
+ * This hook is invoked from node_delete_multiple() after the node has been
+ * removed from the node table in the database, after the type-specific
+ * hook_delete() has been invoked, and before field_attach_delete() is called.
  *
  * @param $node
  *   The node that is being deleted.
  */
-function hook_node_delete(stdClass $node) {
+function hook_node_delete($node) {
   db_delete('mytable')
     ->condition('nid', $node->nid)
     ->execute();
 }
 
 /**
- * A revision of the node is deleted.
+ * Respond to deletion of a node revision.
  *
- * You can delete data associated with that revision.
+ * This hook is invoked from node_revision_delete() after the revision has been
+ * removed from the node_revision table, and before
+ * field_attach_delete_revision() is called.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node revision (node object) that is being deleted.
  */
-function hook_node_revision_delete(stdClass $node) {
+function hook_node_revision_delete($node) {
   db_delete('upload')->condition('vid', $node->vid)->execute();
   if (!is_array($node->files)) {
     return;
@@ -290,14 +297,16 @@ function hook_node_revision_delete(stdClass $node) {
 }
 
 /**
- * Respond to node insertion.
+ * Respond to creation of a new node.
  *
- * Take action when a new node of any type is being inserted in the database.
+ * This hook is invoked from node_save() after the node is inserted into the
+ * node table in the database, after the type-specific hook_insert() is invoked,
+ * and after field_attach_insert() is called.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node that is being created.
  */
-function hook_node_insert(stdClass $node) {
+function hook_node_insert($node) {
   db_insert('mytable')
     ->fields(array(
       'nid' => $node->nid,
@@ -307,30 +316,33 @@ function hook_node_insert(stdClass $node) {
 }
 
 /**
- * Act on node objects when loaded.
+ * Act on nodes being loaded from the database.
  *
- * This hook allows you to add information to node objects when loaded from
- * the database. It takes an array of nodes indexed by nid as its first
- * parameter. For performance reasons, information for all available nodes
- * should be loaded in a single query where possible.
+ * This hook is invoked during node loading, which is handled by entity_load(),
+ * via classes NodeController and DrupalDefaultEntityController. After the node
+ * information is read from the database or the entity cache, hook_load() is
+ * invoked on the node's content type module, then field_attach_node_revision()
+ * or field_attach_load() is called, then hook_entity_load() is invoked on all
+ * implementing modules, and finally hook_node_load() is invoked on all
+ * implementing modules.
  *
- * The types of all nodes being passed in are also available in the $types
- * parameter. If your module keeps track of the node types it supports, this
- * allows for an early return if nothing needs to be done.
+ * This hook should only be used to add information that is not in the node or
+ * node revisions table, not to replace information that is in these tables
+ * (which could interfere with the entity cache). For performance reasons,
+ * information for all available nodes should be loaded in a single query where
+ * possible.
  *
- * Due to the internal cache in node_load_multiple(), you should not use this
- * hook to modify information returned from the {node} table itself, since
- * this may affect the way nodes are returned from the cache in subsequent
- * calls to the function.
- *
- * @see comment_node_load()
- * @see taxonomy_node_load()
- * @see forum_node_load()
+ * The $types parameter allows for your module to have an early return (for
+ * efficiency) if your module only supports certain node types. However, if your
+ * module defines a content type, you can use hook_load() to respond to loading
+ * of just that content type.
  *
  * @param $nodes
- *   An array of node objects indexed by nid.
+ *   An array of the nodes being loaded, keyed by nid.
  * @param $types
  *   An array containing the types of the nodes.
+ *
+ * For a detailed usage example, see nodeapi_example.module.
  */
 function hook_node_load($nodes, $types) {
   $result = db_query('SELECT nid, foo FROM {mytable} WHERE nid IN(:nids)', array(':nids' => array_keys($nodes)));
@@ -369,6 +381,7 @@ function hook_node_load($nodes, $types) {
  * @param $account
  *   A user object representing the user for whom the operation is to be
  *   performed.
+ *
  * @return
  *   NODE_ACCESS_ALLOW if the operation is to be allowed;
  *   NODE_ACCESS_DENY if the operation is to be denied;
@@ -401,53 +414,60 @@ function hook_node_access($node, $op, $account) {
 
 
 /**
- * The node is about to be shown on the add/edit form.
+ * Act on a node object about to be shown on the add/edit form.
+ *
+ * This hook is invoked from node_object_prepare() after the type-specific
+ * hook_prepare() is invoked.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node that is about to be shown on the add/edit form.
  */
-function hook_node_prepare(stdClass $node) {
+function hook_node_prepare($node) {
   if (!isset($node->comment)) {
     $node->comment = variable_get("comment_$node->type", COMMENT_NODE_OPEN);
   }
 }
 
 /**
- * The node is being cloned for translation.
+ * Act on a node object being cloned for translation.
  *
- * This hook can be used to load additional data or copy values from
- * $node->translation_source.
+ * This hook is invoked from translation_node_prepare() after the node is
+ * loaded. $node->language is set to the language being requested, and
+ * $node->translation_source is set to the node object being cloned.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node object being prepared for translation.
  */
-function hook_node_prepare_translation(stdClass $node) {
+function hook_node_prepare_translation($node) {
 }
 
 /**
- * The node is being displayed as a search result.
+ * Act on a node being displayed as a search result.
  *
- * If you want to display extra information with the result, return it.
+ * This hook is invoked from node_search_execute(), after node_load()
+ * and node_build() have been called.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node being displayed in a search result.
+ *
  * @return
  *   Extra information to be displayed with search result.
  */
-function hook_node_search_result(stdClass $node) {
+function hook_node_search_result($node) {
   $comments = db_query('SELECT comment_count FROM {node_comment_statistics} WHERE nid = :nid', array('nid' => $node->nid))->fetchField();
   return format_plural($comments, '1 comment', '@count comments');
 }
 
 /**
- * The node passed validation and is about to be saved.
+ * Act on a node being inserted or updated.
  *
- * Modules may make changes to the node before it is saved to the database.
+ * This hook is invoked from node_save() before the node is saved to the
+ * database.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node that is being inserted or updated.
  */
-function hook_node_presave(stdClass $node) {
+function hook_node_presave($node) {
   if ($node->nid && $node->moderate) {
     // Reset votes when node is updated:
     $node->score = 0;
@@ -457,12 +477,16 @@ function hook_node_presave(stdClass $node) {
 }
 
 /**
- * The node being updated.
+ * Respond to updates to a node.
+ *
+ * This hook is invoked from node_save() after the node is updated in the node
+ * table in the database, after the type-specific hook_update() is invoked, and
+ * after field_attach_update() is called.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node that is being updated.
  */
-function hook_node_update(stdClass $node) {
+function hook_node_update($node) {
   db_update('mytable')
     ->fields(array('extra' => $node->extra))
     ->condition('nid', $node->nid)
@@ -470,17 +494,18 @@ function hook_node_update(stdClass $node) {
 }
 
 /**
- * The node is being indexed.
+ * Act on a node being indexed for searching.
  *
- * If you want additional information to be indexed which is not already
- * visible through node "view", then you should return it here.
+ * This hook is invoked during search indexing, after node_load(), and after
+ * the result of node_build() is added as $node->rendered to the node object.
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node being indexed.
+ *
  * @return
  *   Array of additional information to be indexed.
  */
-function hook_node_update_index(stdClass $node) {
+function hook_node_update_index($node) {
   $text = '';
   $comments = db_query('SELECT subject, comment, format FROM {comment} WHERE nid = :nid AND status = :status', array(':nid' => $node->nid, ':status' => COMMENT_PUBLISHED));
   foreach ($comments as $comment) {
@@ -490,17 +515,26 @@ function hook_node_update_index(stdClass $node) {
 }
 
 /**
- * The user has finished editing the node and is previewing or submitting it.
+ * Perform node validation before a node is created or updated.
  *
- * This hook can be used to check the node data. Errors should be set with
- * form_set_error().
+ * This hook is invoked from node_validate(), after a user has has finished
+ * editing the node and is previewing or submitting it. It is invoked at the
+ * end of all the standard validation steps, and after the type-specific
+ * hook_validate() is invoked.
+ *
+ * To indicate a validation error, use form_set_error().
+ *
+ * Note: Changes made to the $node object within your hook implementation will
+ * have no effect.  The preferred method to change a node's content is to use
+ * hook_node_presave() instead. If it is really necessary to change
+ * the node at the validate stage, you can use form_set_value().
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node being validated.
  * @param $form
- *   The $form parameter from node_validate().
+ *   The form being used to edit the node.
  */
-function hook_node_validate(stdClass $node, $form) {
+function hook_node_validate($node, $form) {
   if (isset($node->end) && isset($node->start)) {
     if ($node->start > $node->end) {
       form_set_error('time', t('An event may not end before it starts.'));
@@ -509,7 +543,7 @@ function hook_node_validate(stdClass $node, $form) {
 }
 
 /**
- * The node content is being assembled before rendering.
+ * Act on a node that is being assembled before rendering.
  *
  * TODO D7 This needs work to clearly explain the different build modes.
  *
@@ -527,11 +561,11 @@ function hook_node_validate(stdClass $node, $form) {
  * @see comment_node_view()
  *
  * @param $node
- *   The node the action is being performed on.
+ *   The node that is being assembled for rendering.
  * @param $build_mode
  *   The $build_mode parameter from node_build().
  */
-function hook_node_view(stdClass $node, $build_mode) {
+function hook_node_view($node, $build_mode) {
   $node->content['my_additional_field'] = array(
     '#value' => $additional_field,
     '#weight' => 10,
@@ -540,35 +574,34 @@ function hook_node_view(stdClass $node, $build_mode) {
 }
 
 /**
- * The node content was built, the module may modify the structured content.
+ * Alter the results of node_build().
  *
- * This hook is called after the content has been assembled in $node->content
- * and may be used for doing processing which requires that the complete node
- * content structure has been built.
+ * This hook is called after the content has been assembled in a structured
+ * array and may be used for doing processing which requires that the complete
+ * node content structure has been built.
  *
  * If the module wishes to act on the rendered HTML of the node rather than the
- * structured content array, it may use this hook to add a #post_render callback.
- * Alternatively, it could also implement hook_preprocess_node(). See
+ * structured content array, it may use this hook to add a #post_render
+ * callback.  Alternatively, it could also implement hook_preprocess_node(). See
  * drupal_render() and theme() documentation respectively for details.
  *
- * @param $node
- *   The node the action is being performed on.
- * @param $build_mode
- *   The $build_mode parameter from node_build().
+ * @param $build
+ *   A renderable array representing the node content.
+ *
+ * @see node_build()
  */
-function hook_node_build_alter(stdClass $node, $build_mode) {
-  // Check for the existence of a field added by another module.
-  if (isset($node->content['an_additional_field'])) {
+function hook_node_build_alter($build) {
+  if ($build['#build_mode'] == 'full' && isset($build['an_additional_field'])) {
     // Change its weight.
-    $node->content['an_additional_field']['#weight'] = -10;
+    $build['an_additional_field']['#weight'] = -10;
   }
 
   // Add a #post_render callback to act on the rendered HTML of the node.
-  $node->content['#post_render'][] = 'my_module_node_post_render';
+  $build['#post_render'][] = 'my_module_node_post_render';
 }
 
 /**
- * Defines module-provided node types.
+ * Define module-provided node types.
  *
  * This hook allows a module to define one or more of its own node types. For
  * example, the blog module uses it to define a blog node-type named "Blog
@@ -688,23 +721,25 @@ function hook_ranking() {
 
 
 /**
- * Act on node type creation.
+ * Respond to node type creation.
  *
- * This hook allows modules to take action when a node type is created.
+ * This hook is invoked from node_type_save() after the node type is added
+ * to the database.
  *
  * @param $info
- *   The node type object which is being created.
+ *   The node type object that is being created.
  */
 function hook_node_type_insert($info) {
 }
 
 /**
- * Act on node type changes.
+ * Respond to node type updates.
  *
- * This hook allows modules to take action when a node type is modified.
+ * This hook is invoked from node_type_save() after the node type is updated
+ * in the database.
  *
  * @param $info
- *   The node type object which is being modified.
+ *   The node type object that is being updated.
  */
 function hook_node_type_update($info) {
   if (!empty($info->old_type) && $info->old_type != $info->type) {
@@ -715,12 +750,13 @@ function hook_node_type_update($info) {
 }
 
 /**
- * Act on node type deletion.
+ * Respond to node type deletion.
  *
- * This hook allows modules to take action when a node type is deleted.
+ * This hook is invoked from node_type_delete() after the node type is removed
+ * from the database.
  *
  * @param $info
- *   The node type object which is being deleted.
+ *   The node type object that is being deleted.
  */
 function hook_node_type_delete($info) {
   variable_del('comment_' . $info->type);
@@ -729,34 +765,35 @@ function hook_node_type_delete($info) {
 /**
  * Respond to node deletion.
  *
- * This is a hook used by node modules. It is called to allow the module
- * to take action when a node is being deleted from the database by, for
- * example, deleting information from related tables.
+ * This hook is invoked only on the module that defines the node's content type
+ * (use hook_node_delete() to respond to all node deletions).
+ *
+ * This hook is invoked from node_delete_multiple() after the node has been
+ * removed from the node table in the database, before hook_node_delete() is
+ * invoked, and before field_attach_delete() is called.
  *
  * @param $node
- *   The node being deleted.
- *
- * To take action when nodes of any type are deleted (not just nodes of
- * the type defined by this module), use hook_node() instead.
- *
- * For a detailed usage example, see node_example.module.
+ *   The node that is being deleted.
  */
-function hook_delete(stdClass $node) {
+function hook_delete($node) {
   db_delete('mytable')
     ->condition('nid', $nid->nid)
     ->execute();
 }
 
 /**
- * This is a hook used by node modules. It is called after load but before the
- * node is shown on the add/edit form.
+ * Act on a node object about to be shown on the add/edit form.
+ *
+ * This hook is invoked only on the module that defines the node's content type
+ * (use hook_node_prepare() to act on all node preparations).
+ *
+ * This hook is invoked from node_object_prepare() before the general
+ * hook_node_prepare() is invoked.
  *
  * @param $node
- *   The node being saved.
- *
- * For a usage example, see image.module.
+ *   The node that is about to be shown on the add/edit form.
  */
-function hook_prepare(stdClass $node) {
+function hook_prepare($node) {
   if ($file = file_check_upload($field_name)) {
     $file = file_save_upload($field_name, _image_filename($file->filename, NULL, TRUE));
     if ($file) {
@@ -796,7 +833,7 @@ function hook_prepare(stdClass $node) {
  *
  * For a detailed usage example, see node_example.module.
  */
-function hook_form(stdClass $node, $form_state) {
+function hook_form($node, $form_state) {
   $type = node_type_get_type($node);
 
   $form['title'] = array(
@@ -832,21 +869,19 @@ function hook_form(stdClass $node, $form_state) {
 }
 
 /**
- * Respond to node insertion.
+ * Respond to creation of a new node.
  *
- * This is a hook used by node modules. It is called to allow the module
- * to take action when a new node is being inserted in the database by,
- * for example, inserting information into related tables.
+ * This hook is invoked only on the module that defines the node's content type
+ * (use hook_node_insert() to act on all node insertions).
+ *
+ * This hook is invoked from node_save() after the node is inserted into the
+ * node table in the database, before field_attach_insert() is called, and
+ * before hook_node_insert() is invoked.
  *
  * @param $node
- *   The node being inserted.
- *
- * To take action when nodes of any type are inserted (not just nodes of
- * the type(s) defined by this module), use hook_node() instead.
- *
- * For a detailed usage example, see node_example.module.
+ *   The node that is being created.
  */
-function hook_insert(stdClass $node) {
+function hook_insert($node) {
   db_insert('mytable')
     ->fields(array(
       'nid' => $node->nid,
@@ -856,17 +891,27 @@ function hook_insert(stdClass $node) {
 }
 
 /**
- * Load node-type-specific information.
+ * Act on nodes being loaded from the database.
  *
- * This is a hook used by node modules. It is called to allow the module
- * a chance to load extra information that it stores about a node. The hook
- * should not be used to replace information from the core {node} table since
- * this may interfere with the way nodes are fetched from cache.
+ * This hook is invoked only on the module that defines the node's content type
+ * (use hook_node_load() to respond to all node loads).
+ *
+ * This hook is invoked during node loading, which is handled by entity_load(),
+ * via classes NodeController and DrupalDefaultEntityController. After the node
+ * information is read from the database or the entity cache, hook_load() is
+ * invoked on the node's content type module, then field_attach_node_revision()
+ * or field_attach_load() is called, then hook_entity_load() is invoked on all
+ * implementing modules, and finally hook_node_load() is invoked on all
+ * implementing modules.
+ *
+ * This hook should only be used to add information that is not in the node or
+ * node revisions table, not to replace information that is in these tables
+ * (which could interfere with the entity cache). For performance reasons,
+ * information for all available nodes should be loaded in a single query where
+ * possible.
  *
  * @param $nodes
- *   An array of the nodes being loaded, keyed by nid. At call time,
- *   node.module has already loaded the basic information about the nodes, such
- *   as node ID (nid), title, and body.
+ *   An array of the nodes being loaded, keyed by nid.
  *
  * For a detailed usage example, see node_example.module.
  */
@@ -878,21 +923,19 @@ function hook_load($nodes) {
 }
 
 /**
- * Respond to node updating.
+ * Respond to updates to a node.
  *
- * This is a hook used by node modules. It is called to allow the module
- * to take action when an edited node is being updated in the database by,
- * for example, updating information in related tables.
+ * This hook is invoked only on the module that defines the node's content type
+ * (use hook_node_update() to act on all node updates).
+ *
+ * This hook is invoked from node_save() after the node is updated in the
+ * node table in the database, before field_attach_update() is called, and
+ * before hook_node_update() is invoked.
  *
  * @param $node
- *   The node being updated.
- *
- * To take action when nodes of any type are updated (not just nodes of
- * the type(s) defined by this module), use hook_node() instead.
- *
- * For a detailed usage example, see node_example.module.
+ *   The node that is being updated.
  */
-function hook_update(stdClass $node) {
+function hook_update($node) {
   db_update('mytable')
     ->fields(array('extra' => $node->extra))
     ->condition('nid', $node->nid)
@@ -900,28 +943,29 @@ function hook_update(stdClass $node) {
 }
 
 /**
- * Verify a node editing form.
+ * Perform node validation before a node is created or updated.
  *
- * This is a hook used by node modules. It is called to allow the module
- * to verify that the node is in a format valid to post to the site.
- * Errors should be set with form_set_error().
+ * This hook is invoked only on the module that defines the node's content type
+ * (use hook_node_validate() to act on all node validations).
+ *
+ * This hook is invoked from node_validate(), after a user has has finished
+ * editing the node and is previewing or submitting it. It is invoked at the end
+ * of all the standard validation steps, and before hook_node_validate() is
+ * invoked.
+ *
+ * To indicate a validation error, use form_set_error().
+ *
+ * Note: Changes made to the $node object within your hook implementation will
+ * have no effect.  The preferred method to change a node's content is to use
+ * hook_node_presave() instead. If it is really necessary to change
+ * the node at the validate stage, you can use form_set_value().
  *
  * @param $node
- *   The node to be validated.
+ *   The node being validated.
  * @param $form
- *   The node edit form array.
- *
- * To validate nodes of all types (not just nodes of the type(s) defined by
- * this module), use hook_node() instead.
- *
- * Changes made to the $node object within a hook_validate() function will
- * have no effect. The preferred method to change a node's content is to use
- * hook_node_presave() instead. If it is really necessary to change
- * the node at the validate stage, you can use function form_set_value().
- *
- * For a detailed usage example, see node_example.module.
+ *   The form being used to edit the node.
  */
-function hook_validate(stdClass $node, &$form) {
+function hook_validate($node, &$form) {
   if (isset($node->end) && isset($node->start)) {
     if ($node->start > $node->end) {
       form_set_error('time', t('An event may not end before it starts.'));
@@ -954,7 +998,7 @@ function hook_validate(stdClass $node, &$form) {
  *
  * For a detailed usage example, see node_example.module.
  */
-function hook_view(stdClass $node, $build_mode = 'full') {
+function hook_view($node, $build_mode = 'full') {
   if ((bool)menu_get_object()) {
     $breadcrumb = array();
     $breadcrumb[] = array('path' => 'example', 'title' => t('example'));

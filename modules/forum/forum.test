@@ -1,5 +1,5 @@
 <?php
-// $Id: forum.test,v 1.37 2009-11-01 12:11:10 dries Exp $
+// $Id: forum.test,v 1.43 2009-12-02 19:26:22 dries Exp $
 
 class ForumTestCase extends DrupalWebTestCase {
   protected $admin_user;
@@ -75,6 +75,16 @@ class ForumTestCase extends DrupalWebTestCase {
     $this->createForumTopic($this->forum, FALSE);
     $this->createForumTopic($this->forum, FALSE);
     $this->drupalGet('node');
+
+    // Test adding a comment to a forum topic.
+    $node = $this->createForumTopic($this->forum, FALSE);
+    $this->drupalPost("node/$node->nid", array('comment' => $this->randomName()), t('Save'));
+    $this->assertResponse(200);
+
+    // Test editing a forum topic that has a comment.
+    $this->drupalLogin($this->any_user);
+    $this->drupalPost("node/$node->nid/edit", array(), t('Save'));
+    $this->assertResponse(200);
   }
 
   /**
@@ -142,7 +152,7 @@ class ForumTestCase extends DrupalWebTestCase {
     );
 
     // Edit the vocabulary.
-    $this->drupalPost('admin/structure/taxonomy/' . $vid, $edit, t('Save'));
+    $this->drupalPost('admin/structure/taxonomy/' . $vid . '/edit', $edit, t('Save'));
     $this->assertResponse(200);
     $this->assertRaw(t('Updated vocabulary %name.', array('%name' => $title)), t('Vocabulary was edited'));
 
@@ -253,11 +263,11 @@ class ForumTestCase extends DrupalWebTestCase {
     // select items list.
     $tid = $forum['tid'];
 
-    $langcode = FIELD_LANGUAGE_NONE;
+    $langcode = LANGUAGE_NONE;
     $edit = array(
       "title[$langcode][0][value]" => $title,
       "body[$langcode][0][value]" => $body,
-      "taxonomy_forums[$langcode][value]" => $tid,
+      "taxonomy_forums[$langcode]" => $tid,
     );
 
     // TODO The taxonomy select value is set by drupal code when the tid is part
@@ -269,12 +279,12 @@ class ForumTestCase extends DrupalWebTestCase {
     $type = t('Forum topic');
     if ($container) {
       $this->assertNoRaw(t('@type %title has been created.', array('@type' => $type, '%title' => $title)), t('Forum topic was not created'));
-      $this->assertRaw(t('The item %title is only a container for forums.', array('%title' => $forum['name'])), t('Error message was shown'));
+      $this->assertRaw(t('The item %title is only a forum container.', array('%title' => $forum['name'])), t('Error message was shown'));
       return;
     }
     else {
       $this->assertRaw(t('@type %title has been created.', array('%title' => $title, '@type' => $type)), t('Forum topic was created'));
-      $this->assertNoRaw(t('The item %title is only a container for forums.', array('%title' => $forum['name'])), t('No error message was shown'));
+      $this->assertNoRaw(t('The item %title is only a forum container.', array('%title' => $forum['name'])), t('No error message was shown'));
     }
 
     // Retrieve node object.
@@ -301,7 +311,7 @@ class ForumTestCase extends DrupalWebTestCase {
    * @param $response
    *   The exptected HTTP response code.
    */
-  private function verifyForums($node_user, stdClass $node, $admin, $response = 200) {
+  private function verifyForums($node_user, $node, $admin, $response = 200) {
     $crumb = '›';
     $quote = '&#039;';
 
@@ -330,24 +340,24 @@ class ForumTestCase extends DrupalWebTestCase {
     // View forum node.
     $this->drupalGet('node/' . $node->nid);
     $this->assertResponse(200);
-    $this->assertTitle($node->title[FIELD_LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Forum node was displayed'));
+    $this->assertTitle($node->title[LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Forum node was displayed'));
     $this->assertText(t('Home ' . $crumb . ' Forums ' . $crumb . ' @container ' . $crumb . ' @forum', array('@container' => $this->container['name'], '@forum' => $this->forum['name'])), t('Breadcrumbs were displayed'));
 
     // View forum edit node.
     $this->drupalGet('node/' . $node->nid . '/edit');
     $this->assertResponse($response);
     if ($response == 200) {
-      $this->assertTitle('Edit Forum topic ' . $node->title[FIELD_LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Forum edit node was displayed'));
+      $this->assertTitle('Edit Forum topic ' . $node->title[LANGUAGE_NONE][0]['value'] . ' | Drupal', t('Forum edit node was displayed'));
     }
 
     if ($response == 200) {
       // Edit forum node (including moving it to another forum).
       $edit = array();
-      $langcode = FIELD_LANGUAGE_NONE;
+      $langcode = LANGUAGE_NONE;
       $edit["title[$langcode][0][value]"] = 'node/' . $node->nid;
       $edit["body[$langcode][0][value]"] = $this->randomName(256);
       // Assume the topic is initially associated with $forum.
-      $edit["taxonomy_forums[$langcode][value]"] = $this->root_forum['tid'];
+      $edit["taxonomy_forums[$langcode]"] = $this->root_forum['tid'];
       $edit['shadow'] = TRUE;
       $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));
       $this->assertRaw(t('Forum topic %title has been updated.', array('%title' => $edit["title[$langcode][0][value]"])), t('Forum node was edited'));

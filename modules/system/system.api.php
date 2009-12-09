@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.99 2009-11-03 06:47:23 webchick Exp $
+// $Id: system.api.php,v 1.108 2009-12-04 22:46:28 dries Exp $
 
 /**
  * @file
@@ -56,20 +56,19 @@ function hook_hook_info() {
  * @return
  *   An array whose keys are entity type names and whose values identify
  *   properties of those types that the  system needs to know about:
- *
- *   name: The human-readable name of the type.
- *   controller class: The name of the class that is used to load the objects.
+ *   - name: The human-readable name of the type.
+ *   - controller class: The name of the class that is used to load the objects.
  *     The class has to implement the DrupalEntityController interface. Leave
  *     blank to use the DefaultDrupalEntityController implementation.
- *   base table: (used by DefaultDrupalEntityController) The name of the entity
- *     type's base table.
- *   static cache: (used by DefaultDrupalEntityController) FALSE to disable
+ *   - base table: (used by DefaultDrupalEntityController) The name of the
+ *     entity type's base table.
+ *   - static cache: (used by DefaultDrupalEntityController) FALSE to disable
  *     static caching of entities during a page request. Defaults to TRUE.
- *   load hook: The name of the hook which should be invoked by
- *   DrupalDefaultEntityController:attachLoad(), for example 'node_load'.
- *   fieldable: Set to TRUE if you want your entity type to be fieldable.
+ *   - load hook: The name of the hook which should be invoked by
+ *     DrupalDefaultEntityController:attachLoad(), for example 'node_load'.
+ *   - fieldable: Set to TRUE if you want your entity type to be fieldable.
  *   - object keys: An array describing how the Field API can extract the
- *     information it needs from the objects of the type.
+ *     information it needs from the objects of the type. Elements:
  *     - id: The name of the property that contains the primary id of the
  *       object. Every object passed to the Field API must have this property
  *       and its value must be numeric.
@@ -87,7 +86,7 @@ function hook_hook_info() {
  *     information it needs from the bundle objects for this type (e.g
  *     $vocabulary objects for terms; not applicable for nodes).
  *     This element can be omitted if this type's bundles do not exist as
- *     standalone objects.
+ *     standalone objects. Elements:
  *     - bundle: The name of the property that contains the name of the bundle
  *       object.
  *   - cacheable: A boolean indicating whether Field API should cache
@@ -95,11 +94,11 @@ function hook_hook_info() {
  *     field_attach_load().
  *   - bundles: An array describing all bundles for this object type.
  *     Keys are bundles machine names, as found in the objects' 'bundle'
- *     property (defined in the 'object keys' entry above).
+ *     property (defined in the 'object keys' entry above). Elements:
  *     - label: The human-readable name of the bundle.
  *     - admin: An array of information that allow Field UI pages (currently
  *       implemented in a contributed module) to attach themselves to the
- *       existing administration pages for the bundle.
+ *       existing administration pages for the bundle. Elements:
  *       - path: the path of the bundle's main administration page, as defined
  *         in hook_menu(). If the path includes a placeholder for the bundle,
  *         the 'bundle argument', 'bundle helper' and 'real path' keys below
@@ -120,7 +119,7 @@ function hook_entity_info() {
       'id key' => 'nid',
       'revision key' => 'vid',
       'fieldable' => TRUE,
-      'bundle key' => 'type',
+      'bundle key' => array('bundle' => 'type'),
       // Node.module handles its own caching.
       // 'cacheable' => FALSE,
       // Bundles must provide human readable name so
@@ -164,6 +163,52 @@ function hook_entity_load($entities, $type) {
   foreach ($entities as $entity) {
     $entity->foo = mymodule_add_something($entity, $entity_type);
   }
+}
+
+/**
+ * Define administrative paths.
+ *
+ * Modules may specify whether or not the paths they define in hook_menu() are
+ * to be considered administrative. Other modules may use this information to
+ * display those pages differently (e.g. in a modal overlay, or in a different
+ * theme).
+ *
+ * To change the administrative status of menu items defined in another module's
+ * hook_menu(), modules should implement hook_admin_paths_alter().
+ *
+ * @return
+ *   An associative array. For each item, the key is the path in question, in
+ *   a format acceptable to drupal_match_path(). The value for each item should
+ *   be TRUE (for paths considered administrative) or FALSE (for non-
+ *   administrative paths).
+ *
+ * @see hook_menu()
+ * @see drupal_match_path()
+ * @see hook_admin_paths_alter()
+ */
+function hook_admin_paths() {
+  $paths = array(
+    'mymodule/*/add' => TRUE,
+    'mymodule/*/edit' => TRUE,
+  );
+  return $paths;
+}
+
+/**
+ * Redefine administrative paths defined by other modules.
+ *
+ * @param $paths
+ *   An associative array of administrative paths, as defined by implementations
+ *   of hook_admin_paths().
+ *
+ * @see hook_admin_paths()
+ */
+function hook_admin_paths_alter(&$paths) {
+  // Treat all user pages as administrative.
+  $paths['user'] = TRUE;
+  $paths['user/*'] = TRUE;
+  // Treat the forum topic node form as a non-administrative page.
+  $paths['node/add/forum'] = FALSE;
 }
 
 /**
@@ -275,6 +320,8 @@ function hook_cron_queue_info() {
  *  - "#pre_render": array of callback functions taking $element and $form_state.
  *  - "#post_render": array of callback functions taking $element and $form_state.
  *  - "#submit": array of callback functions taking $form and $form_state.
+ *  - "#title_display": optional string indicating if and how #title should be
+ *    displayed, see theme_form_element() and theme_form_element_label().
  *
  * @see hook_element_info_alter()
  * @see system_element_info()
@@ -645,9 +692,11 @@ function hook_form_system_theme_settings_alter(&$form, &$form_state) {
  * function but each form will have a different form id for submission,
  * validation, theming or alteration by other modules.
  *
- * The callback arguments will be passed as parameters to the function. Callers
- * of drupal_get_form() are also able to pass in parameters. These will be
- * appended after those specified by hook_forms().
+ * The 'callback arguments' will be passed as parameters to the function defined
+ * in 'callback'. In case the code that calls drupal_get_form() also passes
+ * parameters, then the 'callback' function will receive the
+ * 'callback arguments' specified in hook_forms() before those that have been
+ * passed to drupal_get_form().
  *
  * See node_forms() for an actual example of how multiple forms share a common
  * building function.
@@ -656,16 +705,44 @@ function hook_form_system_theme_settings_alter(&$form, &$form_state) {
  *   The unique string identifying the desired form.
  * @param $args
  *   An array containing the original arguments provided to drupal_get_form().
+ *   These are always passed to the form builder and do not have to be specified
+ *   manually in 'callback arguments'.
+ *
  * @return
- *   An array keyed by form_id with callbacks and optional, callback arguments.
+ *   An associative array whose keys define form_ids and whose values are an
+ *   associative array defining the following keys:
+ *   - callback: The name of the form builder function to invoke.
+ *   - callback arguments: (optional) Additional arguments to pass to the
+ *     function defined in 'callback', which are prepended to $args.
+ *   - wrapper_callback: (optional) The name of a form builder function to
+ *     invoke before the form builder defined in 'callback' is invoked. This
+ *     wrapper callback may prepopulate the $form array with form elements,
+ *     which will then be already contained in the $form that is passed on to
+ *     the form builder defined in 'callback'. For example, a wrapper callback
+ *     could setup wizard-alike form buttons that are the same for a variety of
+ *     forms that belong to the wizard, which all share the same wrapper
+ *     callback.
  */
 function hook_forms($form_id, $args) {
+  // Simply reroute the (non-existing) $form_id 'mymodule_first_form' to
+  // 'mymodule_main_form'.
   $forms['mymodule_first_form'] = array(
-    'callback' => 'mymodule_form_builder',
+    'callback' => 'mymodule_main_form',
+  );
+
+  // Reroute the $form_id and prepend an additional argument that gets passed to
+  // the 'mymodule_main_form' form builder function.
+  $forms['mymodule_second_form'] = array(
+    'callback' => 'mymodule_main_form',
     'callback arguments' => array('some parameter'),
   );
-  $forms['mymodule_second_form'] = array(
-    'callback' => 'mymodule_form_builder',
+
+  // Reroute the $form_id, but invoke the form builder function
+  // 'mymodule_main_form_wrapper' first, so we can prepopulate the $form array
+  // that is passed to the actual form builder 'mymodule_main_form'.
+  $forms['mymodule_wrapped_form'] = array(
+    'callback' => 'mymodule_main_form',
+    'wrapper_callback' => 'mymodule_main_form_wrapper',
   );
 
   return $forms;
@@ -1187,7 +1264,7 @@ function hook_mail($key, &$message, $params) {
       '%uid' => $node->uid,
       '%node_url' => url('node/' . $node->nid, array('absolute' => TRUE)),
       '%node_type' => node_type_get_name($node),
-      '%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'],
+      '%title' => $node->title[LANGUAGE_NONE][0]['value'],
       '%teaser' => $node->teaser,
       '%body' => $node->body,
     );
@@ -1944,7 +2021,10 @@ function hook_install() {
  *   to the user. If no message is returned, no message will be presented to the
  *   user.
  */
-function hook_update_N(&$sandbox = NULL) {
+function hook_update_N(&$sandbox) {
+  // For non-multipass updates, the signature can simply be;
+  // function hook_update_N() {
+
   // For most updates, the following is sufficient.
   db_add_field('mytable1', 'newcol', array('type' => 'int', 'not null' => TRUE, 'description' => 'My new integer column.'));
 
@@ -2376,13 +2456,16 @@ function hook_file_mimetype_mapping_alter(&$mapping) {
  *   - 'triggers': An array of the events (that is, hooks) that can trigger this
  *     action. For example: array('node_insert', 'user_update'). You can also
  *     declare support for any trigger by returning array('any') for this value.
- *   - 'behavior': (optional) machine-readable array of behaviors of this
- *     action, used to signal additional actions that may need to be triggered.
- *     Currently recognized behaviors by Trigger module:
- *     - 'changes_node_property': If an action with this behavior is assigned to
- *       a trigger other than 'node_presave', any node save actions also
- *       assigned to this trigger are moved later in the list. If a node save
- *       action is not present, one will be added.
+ *   - 'behavior': (optional) A machine-readable array of behaviors of this
+ *     action, used to signal additionally required actions that may need to be
+ *     triggered. Currently recognized behaviors by Trigger module:
+ *     - 'changes_property': If an action with this behavior is assigned to a
+ *       trigger other than a "presave" hook, any save actions also assigned to
+ *       this trigger are moved later in the list. If no save action is present,
+ *       one will be added.
+ *       Modules that are processing actions (like Trigger module) should take
+ *       special care for the "presave" hook, in which case a dependent "save"
+ *       action should NOT be invoked.
  */
 function hook_action_info() {
   return array(
@@ -2390,12 +2473,20 @@ function hook_action_info() {
       'type' => 'comment',
       'label' => t('Unpublish comment'),
       'configurable' => FALSE,
-      'triggers' => array('comment_insert', 'comment_update'),
+      'behavior' => array('changes_property'),
+      'triggers' => array('comment_presave', 'comment_insert', 'comment_update'),
     ),
     'comment_unpublish_by_keyword_action' => array(
       'type' => 'comment',
       'label' => t('Unpublish comment containing keyword(s)'),
       'configurable' => TRUE,
+      'behavior' => array('changes_property'),
+      'triggers' => array('comment_presave', 'comment_insert', 'comment_update'),
+    ),
+    'comment_save_action' => array(
+      'type' => 'comment',
+      'label' => t('Save comment'),
+      'configurable' => FALSE,
       'triggers' => array('comment_insert', 'comment_update'),
     ),
   );
@@ -2626,6 +2717,23 @@ function hook_page_delivery_callback_alter(&$callback) {
   // from jQuery, deliver it instead as an AJAX response.
   if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest' && $callback == 'drupal_deliver_html_page') {
     $callback = 'ajax_deliver';
+  }
+}
+
+/**
+ * Alters theme operation links.
+ *
+ * @param $theme_groups
+ *   An associative array containing groups of themes.
+ *
+ * @see system_themes_page()
+ */
+function hook_system_themes_page_alter(&$theme_groups) {
+  foreach ($theme_groups as $state => &$group) {
+    foreach($theme_groups[$state] as &$theme) {
+      // Add a foo link to each list of theme operations.
+      $theme->operations[] = l(t('Foo'), 'admin/appearance/foo', array('query' => array('theme' => $theme->name)));
+    }
   }
 }
 

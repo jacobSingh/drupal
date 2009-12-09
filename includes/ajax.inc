@@ -1,5 +1,5 @@
 <?php
-// $Id: ajax.inc,v 1.16 2009-10-18 05:14:39 webchick Exp $
+// $Id: ajax.inc,v 1.19 2009-11-22 02:48:37 webchick Exp $
 
 /**
  * @file
@@ -216,7 +216,6 @@ function ajax_get_form() {
   // The form needs to be processed; prepare for that by setting a few internal
   // variables.
   $form_state['input'] = $_POST;
-  $form_state['args'] = $form['#args'];
   $form_id = $form['#form_id'];
 
   return array($form, $form_state, $form_id, $form_build_id);
@@ -367,7 +366,7 @@ function ajax_deliver($page_callback_result) {
  *   None. Additional code is added to the header of the page using
  *   drupal_add_js().
  */
-function ajax_process_form($element) {
+function ajax_process_form($element, &$form_state) {
   $js_added = &drupal_static(__FUNCTION__, array());
 
   // Add a reasonable default event handler if none was specified.
@@ -438,7 +437,7 @@ function ajax_process_form($element) {
     drupal_add_js(array('ajax' => array($element['#id'] => $ajax_binding)), 'setting');
 
     $js_added[$element['#id']] = TRUE;
-    $element['#cache'] = TRUE;
+    $form_state['cache'] = TRUE;
   }
   return $element;
 }
@@ -721,7 +720,7 @@ function ajax_command_changed($selector, $asterisk = '') {
   return array(
     'command' => 'changed',
     'selector' => $selector,
-    'star' => $asterisk,
+    'asterisk' => $asterisk,
   );
 }
 
