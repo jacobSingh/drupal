@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.365 2009-12-04 16:47:15 dries Exp $
+// $Id: menu.inc,v 1.367 2009-12-08 07:09:43 webchick Exp $
 
 /**
  * @file
@@ -921,7 +921,7 @@ function menu_tree_output($tree) {
     $element['#attributes']['class'] = $class;
     $element['#title'] = $data['link']['title'];
     $element['#href'] = $data['link']['href'];
-    $element['#localized_options'] = !empty($data['localized_options']) ? $data['localized_options'] : array();
+    $element['#localized_options'] = !empty($data['link']['localized_options']) ? $data['link']['localized_options'] : array();
     $element['#below'] = $data['below'] ? menu_tree_output($data['below']) : $data['below'];
     $element['#original_link'] = $data['link'];
     // Index using the link's unique mlid.
@@ -1854,7 +1854,7 @@ function menu_local_tasks($level = 0) {
  * @return
  *   A list of menu router items that are local tasks for the passed in path.
  *
- * @see system_preprocess()
+ * @see contextual_links_preprocess()
  */
 function menu_contextual_links($module, $parent_path, $args) {
   static $path_empty = array();

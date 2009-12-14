@@ -1,5 +1,5 @@
 <?php
-// $Id: field.attach.inc,v 1.60 2009-12-04 16:49:46 dries Exp $
+// $Id: field.attach.inc,v 1.64 2009-12-13 12:42:28 dries Exp $
 
 /**
  * @file
@@ -685,11 +685,16 @@ function field_attach_load_revision($obj_type, $objects, $options = array()) {
  *   The type of $object; e.g. 'node' or 'user'.
  * @param $object
  *   The object with fields to validate.
- * @return
- *   Throws a FieldValidationException if validation errors are found.
+ * @throws FieldValidationException
+ *   If validation errors are found, a FieldValidationException is thrown. The
+ *   'errors' property contains the array of errors, keyed by field name,
+ *   language and delta.
  */
 function field_attach_validate($obj_type, $object) {
   $errors = array();
+  // Check generic, field-type-agnostic errors first.
+  _field_invoke_default('validate', $obj_type, $object, $errors);
+  // Check field-type specific errors.
   _field_invoke('validate', $obj_type, $object, $errors);
 
   // Let other modules validate the object.
@@ -1109,14 +1114,40 @@ function field_attach_query_revisions($field_id, $conditions, $options = array()
  * Allow formatters to act on fieldable objects prior to rendering.
  */
 function field_attach_prepare_view($obj_type, $objects, $build_mode = 'full') {
+  // First let the field types do their preparation.
+  _field_invoke_multiple('prepare_view', $obj_type, $objects);
+  // Then let the formatters do their own specific massaging.
+  // field_default_prepare_view() takes care of dispatching to the correct
+  // formatters according to the display settings for the build mode.
   _field_invoke_multiple_default('prepare_view', $obj_type, $objects, $build_mode);
 }
 
 /**
- * Generate and return a structured content array tree suitable for
- * drupal_render() for all of the fields on an object. The format of
- * each field's rendered content depends on the display formatter and
- * its settings.
+ * Returns a renderable array for the fields on an object.
+ *
+ * Each field is displayed according to the display options specified in the
+ * $instance definition for the given $build_mode.
+ *
+ * Sample structure:
+ * @code
+ * array(
+ *   'field_foo' => array(
+ *     '#theme' => 'field',
+ *     '#title' => the label of the field instance,
+ *     '#label_display' => the label display mode,
+ *     '#object' => the fieldable object being displayed,
+ *     '#object_type' => the type of the object being displayed,
+ *     '#language' => the language of the field values being displayed,
+ *     '#build_mode' => the build mode,
+ *     '#field_name' => the name of the field,
+ *     '#field_type' => the type of the field,
+ *     '#formatter' => the name of the formatter,
+ *     '#items' => the field values being displayed,
+ *     // The element's children are the formatted values returned by
+ *     // hook_field_formatter().
+ *   ),
+ * );
+ * @endcode
  *
  * @param $obj_type
  *   The type of $object; e.g. 'node' or 'user'.
@@ -1128,56 +1159,7 @@ function field_attach_prepare_view($obj_type, $objects, $build_mode = 'full') {
  *   The language the field values are to be shown in. If no language is
  *   provided the current language is used.
  * @return
- *   A structured content array tree for drupal_render().
- *   Sample structure:
- *   @code
- *   array(
- *     'field_foo' => array(
- *       // The structure of the array differs slightly depending on whether
- *       // the formatter is 'single-value' (displays one single field value,
- *       // most common case) or 'multiple-values' (displays all the field's
- *       // values, e.g. points on a graph or a map).
- *       '#theme' => 'field',
- *       '#title' => the label of the field instance,
- *       '#label_display' => the label display mode,
- *       '#object' => the fieldable object being displayed,
- *       '#object_type' => the type of the object being displayed,
- *       '#language' => the language of the field values being displayed,
- *       '#build_mode' => the build mode,
- *       '#field_name' => the name of the field,
- *       '#formatter_single' => boolean indicating whether the formatter is single or
- *          multiple,
- *       'items' => array(
- *         // One sub-array per field value, keyed by delta.
- *         0 => array(
- *           '#item' => the field value for delta 0,
- *
- *           // Only for 'single-value' formatters:
- *           '#theme' => the formatter's theme function,
- *           '#formatter' => name of the formatter,
- *           '#settings' => array of formatter settings,
- *           '#object' => the fieldable object being displayed,
- *           '#object_type' => the type of the object being displayed,
- *           '#field_name' => the name of the field,
- *           '#bundle' => the object's bundle,
- *           '#delta' => 0,
- *         ),
- *         1 => array(
- *           ...
- *         ),
- *
- *         // Only for 'multiple-values' formatters:
- *         '#theme' => the formatter's theme function,
- *         '#formatter' => name of the formatter,
- *         '#settings' => array of formatter settings,
- *         '#object' => the fieldable object being displayed,
- *         '#object_type' => the type of the object being displayed,
- *         '#field_name' => the name of the field,
- *         '#bundle' => the object's bundle,
- *       ),
- *     ),
- *   );
- *   @endcode
+ *   A renderable array for the field values.
  */
 function field_attach_view($obj_type, $object, $build_mode = 'full', $langcode = NULL) {
   // If no language is provided use the current UI language.

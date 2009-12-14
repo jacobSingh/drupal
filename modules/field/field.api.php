@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.51 2009-12-02 19:26:21 dries Exp $
+// $Id: field.api.php,v 1.55 2009-12-13 12:42:28 dries Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -87,7 +87,7 @@ function hook_field_extra_fields($bundle) {
  * @see hook_field_update().
  * @see hook_field_delete().
  * @see hook_field_delete_revision().
- * @see hook_field_sanitize().
+ * @see hook_field_prepare_view().
  * @see hook_field_is_empty().
  *
  * The Field Types API also defines two kinds of pluggable handlers: widgets
@@ -241,9 +241,9 @@ function hook_field_schema($field) {
 }
 
 /**
- * Define custom load behavior for this module's field types.
+ * Defines custom load behavior for this module's field types.
  *
- * Unlike other field hooks, this hook operates on multiple objects. The
+ * Unlike most other field hooks, this hook operates on multiple objects. The
  * $objects, $instances and $items parameters are arrays keyed by object id.
  * For performance reasons, information for all available objects should be
  * loaded in a single query where possible.
@@ -261,7 +261,8 @@ function hook_field_schema($field) {
  * @param $field
  *   The field structure for the operation.
  * @param $instances
- *   Array of instance structures for $field for each object, keyed by object id.
+ *   Array of instance structures for $field for each object, keyed by object
+ *   id.
  * @param $langcode
  *   The language associated to $items.
  * @param $items
@@ -274,23 +275,16 @@ function hook_field_schema($field) {
  *   parameter by reference.
  */
 function hook_field_load($obj_type, $objects, $field, $instances, $langcode, &$items, $age) {
+  // Sample code from text.module: precompute sanitized strings so they are
+  // stored in the field cache.
   foreach ($objects as $id => $object) {
     foreach ($items[$id] as $delta => $item) {
-      if (!empty($instances[$id]['settings']['text_processing'])) {
-        // Only process items with a cacheable format, the rest will be
-        // handled by hook_field_sanitize().
-        $format = $item['format'];
-        if (filter_format_allowcache($format)) {
-          $items[$id][$delta]['safe'] = isset($item['value']) ? check_markup($item['value'], $format, $langcode) : '';
-          if ($field['type'] == 'text_with_summary') {
-            $items[$id][$delta]['safe_summary'] = isset($item['summary']) ? check_markup($item['summary'], $format, $langcode) : '';
-          }
-        }
-      }
-      else {
-        $items[$id][$delta]['safe'] = check_plain($item['value']);
+      // Only process items with a cacheable format, the rest will be handled
+      // by formatters if needed.
+      if (empty($instances[$id]['settings']['text_processing']) || filter_format_allowcache($item['format'])) {
+        $items[$id][$delta]['safe_value'] = isset($item['value']) ? _text_sanitize($instances[$id], $langcode, $item, 'value') : '';
         if ($field['type'] == 'text_with_summary') {
-          $items[$id][$delta]['safe_summary'] = check_plain($item['summary']);
+          $items[$id][$delta]['safe_summary'] = isset($item['summary']) ? _text_sanitize($instances[$id], $langcode, $item, 'summary') : '';
         }
       }
     }
@@ -298,43 +292,43 @@ function hook_field_load($obj_type, $objects, $field, $instances, $langcode, &$i
 }
 
 /**
- * Define custom sanitize behavior for this module's field types.
+ * Prepares field values prior to display.
  *
- * This hook is invoked just before the field values are handed to formatters
- * for display. Formatters being essentially theme functions, it is important
- * that any data sanitization happens outside the theme layer.
+ * This hook is invoked before the field values are handed to formatters
+ * for display, and runs before the formatters' own
+ * hook_field_formatter_prepare_view().
+ * @see hook_field_formatter_prepare_view()
+ *
+ * Unlike most other field hooks, this hook operates on multiple objects. The
+ * $objects, $instances and $items parameters are arrays keyed by object id.
+ * For performance reasons, information for all available objects should be
+ * loaded in a single query where possible.
  *
  * @param $obj_type
  *   The type of $object.
- * @param $object
- *   The object for the operation.
+ * @param $objects
+ *   Array of objects being displayed, keyed by object id.
  * @param $field
  *   The field structure for the operation.
- * @param $instance
- *   The instance structure for $field on $object's bundle.
+ * @param $instances
+ *   Array of instance structures for $field for each object, keyed by object
+ *   id.
  * @param $langcode
  *   The language associated to $items.
  * @param $items
  *   $object->{$field['field_name']}, or an empty array if unset.
  */
-function hook_field_sanitize($obj_type, $object, $field, $instance, $langcode, &$items) {
-  foreach ($items as $delta => $item) {
-    // Only sanitize items which were not already processed inside
-    // hook_field_load(), i.e. items with uncacheable text formats, or coming
-    // from a form preview.
-    if (!isset($items[$delta]['safe'])) {
-      if (!empty($instance['settings']['text_processing'])) {
-        $format = $item['format'];
-        $items[$delta]['safe'] = isset($item['value']) ? check_markup($item['value'], $format, $langcode, TRUE) : '';
-        if ($field['type'] == 'text_with_summary') {
-          $items[$delta]['safe_summary'] = isset($item['summary']) ? check_markup($item['summary'], $format, $langcode, TRUE) : '';
-        }
-      }
-      else {
-        $items[$delta]['safe'] = check_plain($item['value']);
-        if ($field['type'] == 'text_with_summary') {
-          $items[$delta]['safe_summary'] = check_plain($item['summary']);
-        }
+function hook_field_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items) {
+  // Sample code from image.module: if there are no images specified at all,
+  // use the default.
+  foreach ($objects as $id => $object) {
+    if (empty($items[$id]) && $field['settings']['default_image']) {
+      if ($file = file_load($field['settings']['default_image'])) {
+        $items[$id][0] = (array) $file + array(
+          'is_default' => TRUE,
+          'alt' => '',
+          'title' => '',
+        );
       }
     }
   }
@@ -347,10 +341,6 @@ function hook_field_sanitize($obj_type, $object, $field, $instance, $langcode, &
  *   The type of $object.
  * @param $object
  *   The object for the operation.
- *   Note that this might not be a full-fledged 'object'. When invoked through
- *   field_attach_query(), the $object will only include properties that the
- *   Field API knows about: bundle, id, revision id, and field values (no node
- *   title, user name...).
  * @param $field
  *   The field structure for the operation.
  * @param $instance
@@ -688,30 +678,14 @@ function hook_field_widget_error($element, $error) {
 /**
  * Expose Field API formatter types.
  *
- * Formatters are mainly theme functions that handle the output of individual
- * field values. These theme calls are typically triggered during the execution
- * of drupal_render() on the render structure built by field_attach_view().
- *
- * The name of the theme hook invoked when displaying the values is derived
- * from formatter type names, using the pattern field_formatter_FORMATTER_NAME.
- * field.module takes care of exposing the corresponding theme functions
- * through hook_theme(). Specifically, field.module defines the theme
- * hook:
- *
- * @code
- *   'field_formatter_FORMATTER_NAME' => array(
- *     'render_element' => 'element',
- *   )
- * @code
- *
- * If a formatter requires a different theme hook definition,
- * implement hook_theme_registry_alter().
+ * Formatters handle the display of field values. Formatter hooks are typically
+ * called by the Field Attach API field_attach_prepare_view() and
+ * field_attach_view() functions.
  *
  * @see hook_field_formatter_info().
  * @see hook_field_formatter_info_alter().
- * @see theme_field_formatter_FORMATTER_NAME().
- * @see hook_theme().
- * @see hook_theme_registry_alter().
+ * @see hook_field_formatter().
+ * @see hook_field_formatter_prepare_view().
  *
  * @return
  *   An array describing the formatter types implemented by the module.
@@ -727,30 +701,16 @@ function hook_field_widget_error($element, $error) {
  *   - settings: An array whose keys are the names of the settings available
  *     for the formatter type, and whose values are the default values for
  *     those settings.
- *   - behaviors: (optional) An array describing behaviors of the formatter.
- *     - multiple values:
- *       FIELD_BEHAVIOR_DEFAULT (default) if the formatter displays one single
- *       field value (most common case). The formatter theme will be invoked
- *       iteratively on each of the field valies.
- *       FIELD_BEHAVIOR_CUSTOM if one single invocation of the formatter theme
- *       takes care of displays all the field values. Examples: points on
- *       a generated graph picture, a Google map, a single link to a popup...
  */
 function hook_field_formatter_info() {
   return array(
     'text_default' => array(
       'label' => t('Default'),
       'field types' => array('text', 'text_long', 'text_with_summary'),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
-      ),
     ),
     'text_plain' => array(
       'label' => t('Plain text'),
       'field types' => array('text', 'text_long', 'text_with_summary'),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
-      ),
     ),
 
     // The text_trimmed formatter displays the trimmed version of the
@@ -761,9 +721,6 @@ function hook_field_formatter_info() {
     'text_trimmed' => array(
       'label' => t('Trimmed'),
       'field types' => array('text', 'text_long', 'text_with_summary'),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
-      ),
     ),
 
     // The 'summary or trimmed' field formatter for text_with_summary
@@ -773,9 +730,6 @@ function hook_field_formatter_info() {
     'text_summary_or_trimmed' => array(
       'label' => t('Summary or trimmed'),
       'field types' => array('text_with_summary'),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
-      ),
     ),
   );
 }
@@ -799,65 +753,19 @@ function hook_field_formatter_info_alter(&$info) {
 }
 
 /**
- * Theme function for a field formatter.
- *
- * This is an example of a 'single' formatter, displaying one single field
- * value (the hook_field_formatter_info() entry uses
- * 'multiple values' = FIELD_BEHAVIOR_DEFAULT).
- *
- * @param $variables
- *   An associative array containing:
- *   - element: A render structure sub-array, containing the following keys:
- *     - #item: The field value being displayed.
- *     - #delta: The index of the value being displayed within the object's
- *       values for the field.
- *     - #field_name: The name of the field being displayed.
- *     - #bundle: The bundle of the object being displayed.
- *     - #object: The object being displayed.
- *     - #object_type: The type of the object being displayed.
- *     - #formatter: The name of the formatter being used.
- *     - #settings: The array of formatter settings.
- */
-function theme_field_formatter_FORMATTER_SINGLE($variables) {
-  // This relies on a 'safe' element being prepared in hook_field_sanitize().
-  return $variables['element']['#item']['safe'];
-}
-
-/**
- * Theme function for a field formatter.
- *
- * This is an example of a 'single' formatter, displaying all the field values
- * (the hook_field_formatter_info() entry uses
- * 'multiple values' = FIELD_BEHAVIOR_CUSTOM).
- *
- * @param $variables
- *   An associative array containing:
- *   - element: A render structure sub-array, containing the following keys:
- *     - #field_name: The name of the field being displayed.
- *     - #bundle: The bundle of the object being displayed.
- *     - #object: The object being displayed.
- *     - #object_type: The type of the object being displayed.
- *     - #formatter: The name of the formatter being used.
- *     - #settings: The array of formatter settings.
- *     - numeric indexes: the field values being displayed.
- */
-function theme_field_formatter_FORMATTER_MULTIPLE($variables) {
-  $element = $variables['element'];
-
-  $items = array();
-  foreach (element_children($element) as $key) {
-    $items[$key] = $key .':'. $element[$key]['#item']['value'];
-  }
-  $output = implode('|', $items);
-  return $output;
-}
-
-/**
- * Allow formatters to load information for multiple objects.
+ * Allow formatters to load information for field values being displayed.
  *
  * This should be used when a formatter needs to load additional information
  * from the database in order to render a field, for example a reference field
  * which displays properties of the referenced objects such as name or type.
+ *
+ * This hook is called after the field type's own hook_field_prepare_view().
+ * @see hook_field_prepare_view()
+ *
+ * Unlike most other field hooks, this hook operates on multiple objects. The
+ * $objects, $instances and $items parameters are arrays keyed by object id.
+ * For performance reasons, information for all available objects should be
+ * loaded in a single query where possible.
  *
  * @param $obj_type
  *   The type of $object.
@@ -866,18 +774,90 @@ function theme_field_formatter_FORMATTER_MULTIPLE($variables) {
  * @param $field
  *   The field structure for the operation.
  * @param $instances
- *   Array of instance structures for $field for each object, keyed by object id.
+ *   Array of instance structures for $field for each object, keyed by object
+ *   id.
  * @param $langcode
  *   The language the field values are to be shown in. If no language is
  *   provided the current language is used.
  * @param $items
  *   Array of field values for the objects, keyed by object id.
+ * @param $displays
+ *   Array of display settings to use for each object, keyed by object id.
  * @return
  *   Changes or additions to field values are done by altering the $items
  *   parameter by reference.
  */
-function hook_field_formatter_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items, $build_mode) {
+function hook_field_formatter_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items, $displays) {
 
+}
+
+/**
+ * Builds a renderable array for a field value.
+ *
+ * @param $obj_type
+ *   The type of $object.
+ * @param $object
+ *   The object being displayed.
+ * @param $field
+ *   The field structure.
+ * @param $instance
+ *   The field instance.
+ * @param $langcode
+ *   The language associated to $items.
+ * @param $items
+ *   Array of values for this field.
+ * @param $display
+ *   The display settings to use, as found in the 'display' entry of instance
+ *   definitions. The array notably contains the following keys and values;
+ *   - type: The name of the formatter to use.
+ *   - settings: The array of formatter settings.
+ *
+ * @return
+ *   A renderable array for the $items, as an array of child elements keyed
+ *   by numeric indexes starting from 0.
+ */
+function hook_field_formatter($obj_type, $object, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+  $settings = $display['settings'];
+
+  switch ($display['type']) {
+    case 'sample_field_formatter_simple':
+      // Common case: each value is displayed individually in a sub-element
+      // keyed by delta. The field.tpl.php template specifies the markup
+      // wrapping each value.
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array('#markup' => $settings['some_setting'] . $item['value']);
+      }
+      break;
+
+    case 'sample_field_formatter_themeable':
+      // More elaborate formatters can defer to a theme function for easier
+      // customization.
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array(
+          '#theme' => 'mymodule_theme_sample_field_formatter_themeable',
+          '#data' => $item['value'],
+          '#some_setting' => $settings['some_setting'],
+        );
+      }
+      break;
+
+    case 'sample_field_formatter_combined':
+      // Some formatters might need to display all values within a single piece
+      // of markup.
+      $rows = array();
+      foreach ($items as $delta => $item) {
+        $rows[] = array($delta, $item['value']);
+      }
+      $element[0] = array(
+        '#theme' => 'table',
+        '#header' => array(t('Delta'), t('Value')),
+        '#rows' => $rows,
+      );
+      break;
+  }
+
+  return $element;
 }
 
 /**
@@ -944,11 +924,6 @@ function hook_field_attach_form($obj_type, $object, &$form, &$form_state, $langc
  * indexed by object id. For performance reasons, information for all available
  * objects should be loaded in a single query where possible.
  *
- * Note that $objects might not be full-fledged 'objects'. When invoked through
- * field_attach_query(), each object only includes properties that the Field
- * API knows about: bundle, id, revision id, and field values (no node title,
- * user name...)
-
  * The changes made to the objects' field values get cached by the field cache
  * for subsequent loads.
  *

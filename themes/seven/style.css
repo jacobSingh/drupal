@@ -1,4 +1,4 @@
-/* $Id: style.css,v 1.34 2009-12-02 07:28:22 webchick Exp $ */
+/* $Id: style.css,v 1.36 2009-12-13 19:48:53 dries Exp $ */
 
 /**
  * Generic elements
@@ -344,6 +344,11 @@ ul.secondary li.active a.active {
 
 #secondary-links ul.links li a:hover {
   background: #999;
+}
+
+#block-system-main ul.links li,
+#block-system-main ul.inline li {
+  padding-right: 1em;
 }
 
 #block-system-main ul.menu li a {
@@ -831,6 +836,12 @@ body.in-maintenance #branding h1 {
 
 body.in-maintenance .form-radios .form-type-radio {
   padding: 2px 0;
+}
+
+body.in-maintenance div.form-item:after {
+  content: "";
+  display: none;
+  clear: none;
 }
 
 body.in-maintenance .form-submit {

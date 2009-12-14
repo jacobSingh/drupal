@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1176 2009-12-04 16:49:46 dries Exp $
+// $Id: node.module,v 1.1181 2009-12-11 16:49:40 dries Exp $
 
 /**
  * @file
@@ -88,14 +88,14 @@ function node_help($path, $arg) {
       $output .= '<dt>' . t('Creating content') . '</dt>';
       $output .= '<dd>' . t('When new content is created, the Node module records basic information about the content, including the author, date of creation, and the <a href="@content-type">Content type</a>. It also manages the <em>publishing options</em>, which define whether or not the content is published, promoted to the front page of the site, and/or sticky at the top of content lists. Default settings can be configured for each <a href="@content-type">type of content</a> on your site.', array('@content-type' => url('admin/structure/types'))) . '</dd>';
       $output .= '<dt>' . t('Creating custom content types') . '</dt>';
-      $output .= '<dd>' . t('The Node module gives users with the <em>Administer content types</em> permission the ability to <a href="@content-new">create new content types</a> in addition to the default ones already configured. Creating custom content types allows you the flexibility to add <a href="@field">fields</a> and configure default settings that suit the differing needs of various site content.', array('@field' => url('admin/help/field'))) . '</dd>';
+      $output .= '<dd>' . t('The Node module gives users with the <em>Administer content types</em> permission the ability to <a href="@content-new">create new content types</a> in addition to the default ones already configured. Creating custom content types allows you the flexibility to add <a href="@field">fields</a> and configure default settings that suit the differing needs of various site content.', array('@content-new' => url('admin/structure/types/add'), '@field' => url('admin/help/field'))) . '</dd>';
       $output .= '<dt>' . t('Administering content') . '</dt>';
       $output .= '<dd>' . t('The <a href="@content">Content administration page</a> allows you to review and bulk manage your site content.', array('@content' => url('admin/content'))) . '</dd>';
       $output .= '<dt>' . t('Creating revisions') . '</dt>';
       $output .= '<dd>' . t('The Node module also enables you to create multiple versions of any content, and revert to older versions using the <em>Revision information</em> settings.') . '</dd>';
       $output .= '<dt>' . t('User permissions') . '</dt>';
       $output .= '<dd>' . t('The Node module makes a number of permissions available for each content type, which can be set by role on the <a href="@permissions">permissions page</a>.', array('@permissions' => url('admin/settings/permissions'))) . '</dd>';
-      $output .= '</dl>'; 
+      $output .= '</dl>';
       return $output;
 
     case 'admin/content':
@@ -997,7 +997,7 @@ function node_save($node) {
     }
     // The changed timestamp is always updated for bookkeeping purposes (revisions, searching, ...)
     $node->changed = REQUEST_TIME;
-  
+
     $node->timestamp = REQUEST_TIME;
     $update_node = TRUE;
 
@@ -1032,30 +1032,30 @@ function node_save($node) {
         ->condition('nid', $node->nid)
         ->execute();
     }
-  
+
     // Restore the title field data structure after db storage.
     $node->title = $title_field;
-  
+
     // Call the node specific callback (if any). This can be
     // node_invoke($node, 'insert') or
     // node_invoke($node, 'update').
     node_invoke($node, $op);
-  
+
     // Save fields.
     $function = "field_attach_$op";
     $function('node', $node);
-  
+
     module_invoke_all('node_' . $op, $node);
-  
+
     // Update the node access table for this node.
     node_access_acquire_grants($node);
-  
+
     // Clear internal properties.
     unset($node->is_new);
-  
+
     // Clear the page and block caches.
     cache_clear_all();
-  
+
     // Ignore slave server temporarily to give time for the
     // saved node to be propagated to the slave.
     db_ignore_slave();
@@ -1281,7 +1281,7 @@ function node_language_negotiation_info() {
  *   A valid language code on succes, FALSE otherwise.
  */
 function node_language_provider($languages) {
-  require_once DRUPAL_ROOT . '/includes/path.inc';
+  require_once DRUPAL_ROOT . '/' . variable_get('path_inc', 'includes/path.inc');
 
   $path = isset($_GET['q']) ? $_GET['q'] : '';
   list($language, $path) = language_url_split_prefix($path, $languages);
@@ -2203,7 +2203,11 @@ function node_page_default() {
 function node_page_view($node) {
   $return = node_show($node);
   if (isset($return['nodes'][$node->nid]['title'])) {
-    drupal_set_title($return['nodes'][$node->nid]['title']['items'][0]['#item']['value']);
+    // Get the language that was determined by language fallback logic during the
+    // field_attach_display() workflow.
+    // @todo That logic should be made available separately.
+    $langcode = $return['nodes'][$node->nid]['title']['#language'];
+    drupal_set_title($node->title[$langcode][0]['value']);
   }
   // Set the node path as the canonical URL to prevent duplicate content.
   drupal_add_html_head_link(array('rel' => 'canonical', 'href' => url('node/' . $node->nid)), TRUE);
@@ -2713,19 +2717,14 @@ function node_query_node_access_alter(QueryAlterableInterface $query) {
 }
 
 /**
- * This function will call module invoke to get a list of grants and then
- * write them to the database. It is called at node save, and should be
- * called by modules whenever something other than a node_save causes
- * the permissions on a node to change.
+ * Gets the list of node access grants and writes them to the database.
  *
- * After the default grants have been loaded, we allow modules to alter
- * the grants array by reference. This hook allows for complex business
- * logic to be applied when integrating multiple node access modules.
- *
- * @see hook_node_access_records()
- *
- * This function is the only function that should write to the node_access
- * table.
+ * This function is called when a node is saved, and can also be called by
+ * modules if something other than a node save causes node access permissions to
+ * change. It collects all node access grants for the node from
+ * hook_node_access_records() implementations, allows these grants to be altered
+ * via hook_node_access_records_alter() implementations, and saves the collected
+ * and altered grants to the database.
  *
  * @param $node
  *   The $node to acquire grants for.
@@ -2752,12 +2751,12 @@ function node_access_acquire_grants($node) {
 }
 
 /**
- * This function will write a list of grants to the database, deleting
- * any pre-existing grants. If a realm is provided, it will only
- * delete grants from that realm, but it will always delete a grant
- * from the 'all' realm. Modules which utilize node_access can
- * use this function when doing mass updates due to widespread permission
- * changes.
+ * Writes a list of grants to the database, deleting any previously saved ones.
+ *
+ * If a realm is provided, it will only delete grants from that realm, but it
+ * will always delete a grant from the 'all' realm. Modules that utilize
+ * node_access can use this function when doing mass updates due to widespread
+ * permission changes.
  *
  * @param $node
  *   The $node being written to. All that is necessary is that it contains a

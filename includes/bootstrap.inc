@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.331 2009-12-02 19:26:21 dries Exp $
+// $Id: bootstrap.inc,v 1.333 2009-12-07 07:25:24 webchick Exp $
 
 /**
  * @file
@@ -24,7 +24,7 @@ define('DRUPAL_MINIMUM_PHP',    '5.2.0');
 /**
  * Minimum recommended value of PHP memory_limit.
  */
-define('DRUPAL_MINIMUM_PHP_MEMORY_LIMIT',    '16M');
+define('DRUPAL_MINIMUM_PHP_MEMORY_LIMIT',    '32M');
 
 /**
  * Minimum supported version of MySQL, if it is used.
@@ -1566,7 +1566,10 @@ function _drupal_bootstrap_page_cache() {
 
   // Allow specifying special cache handlers in settings.php, like
   // using memcached or files for storing cache information.
-  require_once DRUPAL_ROOT . '/' . variable_get('cache_inc', 'includes/cache.inc');
+  require_once DRUPAL_ROOT . '/includes/cache.inc';
+  foreach (variable_get('cache_backends', array()) as $include) {
+    require_once DRUPAL_ROOT . '/' . $include;
+  }
   // Check for a cache mode force from settings.php.
   if (variable_get('page_cache_without_database')) {
     $cache_mode = CACHE_NORMAL;

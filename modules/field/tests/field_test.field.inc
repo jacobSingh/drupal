@@ -1,5 +1,5 @@
 <?php
-// $Id: field_test.field.inc,v 1.2 2009-12-04 16:49:46 dries Exp $
+// $Id: field_test.field.inc,v 1.5 2009-12-13 12:41:08 dries Exp $
 
 /**
  * @file
@@ -92,16 +92,6 @@ function field_test_field_validate($obj_type, $object, $field, $instance, $langc
 }
 
 /**
- * Implements hook_field_sanitize().
- */
-function field_test_field_sanitize($obj_type, $object, $field, $instance, $langcode, &$items) {
-  foreach ($items as $delta => $item) {
-    $value = check_plain($item['value']);
-    $items[$delta]['safe'] = $value;
-  }
-}
-
-/**
  * Implements hook_field_is_empty().
  */
 function field_test_field_is_empty($item, $field) {
@@ -167,20 +157,56 @@ function field_test_field_widget_info() {
  * Implements hook_field_widget().
  */
 function field_test_field_widget(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
-  $element = array(
-    'value' => $element + array(
-      '#type' => 'textfield',
-      '#default_value' => isset($items[$delta]['value']) ? $items[$delta]['value'] : '',
-    ),
-  );
-  return $element;
+  switch ($instance['widget']['type']) {
+    case 'test_field_widget':
+      $element += array(
+        '#type' => 'textfield',
+        '#default_value' => isset($items[$delta]['value']) ? $items[$delta]['value'] : '',
+      );
+      return array('value' => $element);
+
+    case 'test_field_widget_multiple':
+      $values = array();
+      foreach ($items as $delta => $value) {
+        $values[] = $value['value'];
+      }
+      $element += array(
+        '#type' => 'textfield',
+        '#default_value' => implode(', ', $values),
+        '#element_validate' => array('field_test_widget_multiple_validate'),
+      );
+      return $element;
+  }
+}
+
+/**
+ * Form element validation handler for 'test_field_widget_multiple' widget.
+ */
+function field_test_widget_multiple_validate($element, &$form_state) {
+  $values = array_map('trim', explode(',', $element['#value']));
+  $items = array();
+  foreach($values as $value) {
+    $items[] = array('value' => $value);
+  }
+  form_set_value($element, $items, $form_state);
 }
 
 /**
  * Implements hook_field_widget_error().
  */
 function field_test_field_widget_error($element, $error) {
-  form_error($element['value'], $error['message']);
+  // @todo No easy way to differenciate widget types, we should receive it as a
+  // parameter.
+  if (isset($element['value'])) {
+    // Widget is test_field_widget.
+    $error_element = $element['value'];
+  }
+  else {
+    // Widget is test_field_widget_multiple.
+    $error_element = $element;
+  }
+
+  form_error($error_element, $error['message']);
 }
 
 /**
@@ -221,9 +247,6 @@ function field_test_field_formatter_info() {
       'settings' => array(
         'test_formatter_setting_multiple' => 'dummy test string',
       ),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_CUSTOM,
-      ),
     ),
     'field_test_needs_additional_data' => array(
       'label' => t('Tests hook_field_formatter_prepare_view()'),
@@ -238,11 +261,11 @@ function field_test_field_formatter_info() {
 /**
  * Implements hook_field_formatter_prepare_view().
  */
-function field_test_field_formatter_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items, $build_mode) {
+function field_test_field_formatter_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items, $displays) {
   foreach ($items as $id => $item) {
     // To keep the test non-intrusive, only act on the
     // 'field_test_needs_additional_data' formatter.
-    if ($instances[$id]['display'][$build_mode]['type'] == 'field_test_needs_additional_data') {
+    if ($displays[$id]['type'] == 'field_test_needs_additional_data') {
       foreach ($item as $delta => $value) {
         // Don't add anything on empty values.
         if ($value) {
@@ -254,47 +277,39 @@ function field_test_field_formatter_prepare_view($obj_type, $objects, $field, $i
 }
 
 /**
- * Theme function for 'field_test_default' formatter.
+ * Implements hook_field_formatter().
  */
-function theme_field_formatter_field_test_default($variables) {
-  $element = $variables['element'];
+function field_test_field_formatter($object_type, $object, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+  $settings = $display['settings'];
 
-  $value = $element['#item']['value'];
-  $settings = $element['#settings'];
+  switch ($display['type']) {
+    case 'field_test_default':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array('#markup' => $settings['test_formatter_setting'] . '|' . $item['value']);
+      }
+      break;
 
-  return $settings['test_formatter_setting'] . '|' . $value;
-}
+    case 'field_test_needs_additional_data':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array('#markup' => $settings['test_formatter_setting_additional'] . '|' . $item['value'] . '|' . $item['additional_formatter_value']);
+      }
+      break;
 
-/**
- * Theme function for 'field_test_multiple' formatter.
- */
-function theme_field_formatter_field_test_multiple($variables) {
-  $element = $variables['element'];
-
-  $settings = $element['#settings'];
-
-  $items = array();
-  foreach (element_children($element) as $key) {
-    $items[$key] = $key .':'. $element[$key]['#item']['value'];
+    case 'field_test_multiple':
+      $array = array();
+      foreach ($items as $delta => $item) {
+        $array[] = $delta . ':' . $item['value'];
+      }
+      $element[0] = array('#markup' => $settings['test_formatter_setting_multiple'] . '|' . implode('|', $array));
+      break;
   }
-  $output = implode('|', $items);
-  return $settings['test_formatter_setting_multiple'] . '|' . $output;
+
+  return $element;
 }
 
 /**
- * Theme function for 'field_test_needs_additional_data' formatter.
- */
-function theme_field_formatter_field_test_needs_additional_data($variables) {
-  $element = $variables['element'];
-  $value = $element['#item']['value'];
-  $additional = $element['#item']['additional_formatter_value'];
-  $settings = $element['#settings'];
-
-  return $settings['test_formatter_setting_additional'] . '|' . $value . '|' . $additional;
-}
-
-/**
- * Sample 'default vale' callback.
+ * Sample 'default value' callback.
  */
 function field_test_default_value($obj_type, $object, $field, $instance) {
   return array(array('value' => 99));

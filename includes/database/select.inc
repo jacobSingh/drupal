@@ -1,5 +1,5 @@
 <?php
-// $Id: select.inc,v 1.29 2009-12-04 16:31:04 dries Exp $
+// $Id: select.inc,v 1.31 2009-12-13 18:06:48 webchick Exp $
 
 /**
  * @ingroup database
@@ -1085,10 +1085,6 @@ class SelectQuery extends Query implements SelectQueryInterface {
     }
 
     $args = $this->getArguments();
-
-    if (!empty($this->range)) {
-      return $this->connection->queryRange((string)$this, $this->range['start'], $this->range['length'], $args, $this->queryOptions);
-    }
     return $this->connection->query((string)$this, $args, $this->queryOptions);
   }
 
@@ -1358,7 +1354,14 @@ class SelectQuery extends Query implements SelectQueryInterface {
       $query .= implode(', ', $fields);
     }
 
-    // RANGE is database specific, so we can't do it here.
+    // RANGE
+    // There is no universal SQL standard for handling range or limit clauses.
+    // Fortunately, all core-supported databases use the same range syntax.
+    // Databases that need a different syntax can override this method and
+    // do whatever alternate logic they need to.
+    if (!empty($this->range)) {
+      $query .= "\nLIMIT " . $this->range['length'] . " OFFSET " . $this->range['start'];
+    }
 
     // UNION is a little odd, as the select queries to combine are passed into
     // this query, but syntactically they all end up on the same level.

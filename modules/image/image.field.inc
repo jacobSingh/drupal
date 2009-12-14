@@ -1,5 +1,5 @@
 <?php
-// $Id: image.field.inc,v 1.5 2009-12-04 16:49:46 dries Exp $
+// $Id: image.field.inc,v 1.8 2009-12-13 12:42:28 dries Exp $
 
 /**
  * @file
@@ -210,17 +210,19 @@ function image_field_load($obj_type, $objects, $field, $instances, $langcode, &$
 }
 
 /**
- * Implements hook_field_sanitize().
+ * Implements hook_field_prepare_view().
  */
-function image_field_sanitize($obj_type, $object, $field, $instance, $langcode, &$items) {
+function image_field_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items) {
   // If there are no files specified at all, use the default.
-  if (empty($items) && $field['settings']['default_image']) {
-    if ($file = file_load($field['settings']['default_image'])) {
-      $items[0] = (array) $file + array(
-        'is_default' => TRUE,
-        'alt' => '',
-        'title' => '',
-      );
+  foreach ($objects as $id => $object) {
+    if (empty($items[$id]) && $field['settings']['default_image']) {
+      if ($file = file_load($field['settings']['default_image'])) {
+        $items[$id][0] = (array) $file + array(
+          'is_default' => TRUE,
+          'alt' => '',
+          'title' => '',
+        );
+      }
     }
   }
 }
@@ -433,17 +435,14 @@ function image_field_formatter_info() {
     $formatters['image__' . $style['name']] = array(
       'label' => t('Image "@style"', array('@style' => $style['name'])),
       'field types' => array('image'),
-      'theme' => array('function' => 'theme_field_formatter_image'),
     );
     $formatters['image_link_content__' . $style['name']] = array(
       'label' => t('Image "@style" linked to content', array('@style' => $style['name'])),
       'field types' => array('image'),
-      'theme' => array('function' => 'theme_field_formatter_image_link_content'),
     );
     $formatters['image_link_file__' . $style['name']] = array(
       'label' => t('Image "@style" linked to file', array('@style' => $style['name'])),
       'field types' => array('image'),
-      'theme' => array('function' => 'theme_field_formatter_image_link_file'),
     );
   }
 
@@ -451,40 +450,63 @@ function image_field_formatter_info() {
 }
 
 /**
- * Theme function for 'image' image field formatter.
+ * Implements hook_field_formatter().
  */
-function theme_field_formatter_image($variables) {
-  $element = $variables['element'];
+function image_field_formatter($obj_type, $object, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+
+  // Check if the formatter involves a particular image style.
+  $matches = array();
+  if (preg_match('/__([a-z0-9_]+)/', $display['type'], $matches)) {
+    $image_style = $matches[1];
+  }
+
+  // Check if the formatter involves a link.
+  if (strpos($display['type'], 'image_link_content') === 0) {
+    list($id) = entity_extract_ids($obj_type, $object);
+    $path = $obj_type . '/' . $id;
+  }
+  elseif (strpos($display['type'], 'image_link_file') === 0) {
+    $link_file = TRUE;
+  }
+
+  foreach ($items as $delta => $item) {
+    if (isset($link_file)) {
+      $path = file_create_url($item['uri']);
+    }
+    $element[$delta] = array(
+      '#theme' => 'image_formatter',
+      '#item' => $item,
+      '#image_style' => isset($image_style) ? $image_style : '',
+      '#path' => isset($path) ? $path : '',
+    );
+  }
+
+   return $element;
+}
+
+/**
+ * Theme function for image field formatters.
+ */
+function theme_image_formatter($variables) {
+  $item = $variables['item'];
   $image = array(
-    'path' => $element['#item']['uri'],
-    'alt' => $element['#item']['alt'],
-    'title' => $element['#item']['title'],
+    'path' => $item['uri'],
+    'alt' => $item['alt'],
+    'title' => $item['title'],
   );
 
-  // Check if this requires a particular image style.
-  $matches = array();
-  if (preg_match('/__([a-z0-9_]+)/', $element['#formatter'], $matches)) {
-    $image['style_name'] = $matches[1];
-    return theme('image_style', $image);
+  if ($variables['image_style']) {
+    $image['style_name'] = $variables['image_style'];
+    $output = theme('image_style', $image);
   }
   else {
-    return theme('image', $image);
+    $output = theme('image', $image);
   }
-}
 
-/**
- * Theme function for 'image_link_content' image field formatter.
- */
-function theme_field_formatter_image_link_content($variables) {
-  $element = $variables['element'];
-  list($id, $vid, $bundle) = entity_extract_ids($element['#object_type'], $element['#object']);
-  return l(theme('field_formatter_image', $variables), $element['#object_type'] . '/' . $id, array('html' => TRUE));
-}
+  if ($variables['path']) {
+    $output = l($output, $variables['path'], array('html' => TRUE));
+  }
 
-/**
- * Theme function for 'image_link_file' image field formatter.
- */
-function theme_field_formatter_image_link_file($variables) {
-  $element = $variables['element'];
-  return l(theme('field_formatter_image', $variables), file_create_url($element['#item']['uri']), array('html' => TRUE));
+  return $output;
 }

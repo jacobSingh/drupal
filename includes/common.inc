@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1057 2009-12-05 14:49:55 dries Exp $
+// $Id: common.inc,v 1.1063 2009-12-11 16:56:10 dries Exp $
 
 /**
  * @file
@@ -807,20 +807,16 @@ function drupal_http_request($url, array $options = array()) {
 
   $result = new stdClass();
 
-  // Parse the URL and make sure we can handle the schema.
-  $uri = @parse_url($url);
-
-  if ($uri == FALSE) {
+  // Validate the passed URL. FILTER_VALIDATE_URL uses parse_url() internally,
+  // but unlike parse_url() itself, it will not throw a run-time notice for
+  // bogus URLs.
+  if (filter_var($url, FILTER_VALIDATE_URL) === FALSE) {
     $result->error = 'unable to parse URL';
     $result->code = -1001;
     return $result;
   }
 
-  if (!isset($uri['scheme'])) {
-    $result->error = 'missing schema';
-    $result->code = -1002;
-    return $result;
-  }
+  $uri = parse_url($url);
 
   timer_start(__FUNCTION__);
 
@@ -1067,6 +1063,11 @@ function _drupal_error_handler($error_level, $message, $filename, $line, $contex
       E_STRICT => 'Strict warning',
       E_RECOVERABLE_ERROR => 'Recoverable fatal error'
     );
+    // E_DEPRECATED and E_USER_DEPRECATED were added in PHP 5.3.0.
+    if (defined('E_DEPRECATED')) {
+      $types[E_DEPRECATED] = 'Deprecated function';
+      $types[E_USER_DEPRECATED] = 'User deprecated function';
+    }
     $caller = _drupal_get_last_caller(debug_backtrace());
 
     // We treat recoverable errors as fatal.
@@ -3106,78 +3107,72 @@ function drupal_add_html_head_link($attributes, $header = FALSE) {
  * Calling drupal_static_reset('drupal_add_css') will clear all cascading
  * stylesheets added so far.
  *
+ * If preprocessing is turned on, the cascading style sheets added using this
+ * function will be preprocessed before they are added to the HTML header of the
+ * page. Preprocessing merges all the CSS files into one file, which is then
+ * compressed by removing all extraneous white space. Note that preprocessed
+ * inline stylesheets will not be aggregated into this single file; instead,
+ * they will just be compressed when being output on the page. External
+ * stylesheets will also not be aggregated.
+ *
+ * The reason for merging the CSS files is outlined quite thoroughly here:
+ * http://www.die.net/musings/page_load_time/ "Load fewer external objects. Due
+ * to request overhead, one bigger file just loads faster than two smaller ones
+ * half its size."
+ *
+ * However, you should *not* preprocess every file as this can lead to redundant
+ * caches. You should set $options['preprocess'] to FALSE when your styles are
+ * only used on a few pages of the site. This could be a special admin page, the
+ * homepage, or a handful of pages that does not represent the majority of the
+ * pages on your site.
+ *
+ * Typical candidates for preprocessing are for example styles for nodes across
+ * the site, or styles used in the theme.
+ *
  * @param $data
  *   (optional) The stylesheet data to be added, depending on what is passed
  *   through to the $options['type'] parameter:
- *   - 'file': The path to the CSS file relative to the base_path(),
- *     e.g., "modules/devel/devel.css".
- *
- *     Modules should always prefix the names of their CSS files with the
- *     module name, for example: system-menus.css rather than simply menus.css.
- *     Themes can override module-supplied CSS files based on their filenames,
- *     and this prefixing helps prevent confusing name collisions for theme
- *     developers. See drupal_get_css where the overrides are performed.
- *
- *     If the direction of the current language is right-to-left (Hebrew,
- *     Arabic, etc.), the function will also look for an RTL CSS file and append
- *     it to the list. The name of this file should have an '-rtl.css' suffix.
- *     For example a CSS file called 'mymodule-name.css' will have a
+ *   - 'file': The path to the CSS file relative to the base_path(), e.g.,
+ *     "modules/devel/devel.css". Note that Modules should always prefix the
+ *     names of their CSS files with the module name; for example,
+ *     system-menus.css rather than simply menus.css. Themes can override
+ *     module-supplied CSS files based on their filenames, and this prefixing
+ *     helps prevent confusing name collisions for theme developers. See
+ *     drupal_get_css() where the overrides are performed. Also, if the
+ *     direction of the current language is right-to-left (Hebrew, Arabic,
+ *     etc.), the function will also look for an RTL CSS file and append it to
+ *     the list. The name of this file should have an '-rtl.css' suffix.  For
+ *     example a CSS file called 'mymodule-name.css' will have a
  *     'mymodule-name-rtl.css' file added to the list, if exists in the same
  *     directory. This CSS file should contain overrides for properties which
  *     should be reversed or otherwise different in a right-to-left display.
  *   - 'inline': A string of CSS that should be placed in the given scope. Note
- *     that it is better practice to use 'file' stylesheets, rather than 'inline'
- *     as the CSS would then be aggregated and cached.
+ *     that it is better practice to use 'file' stylesheets, rather than
+ *     'inline', as the CSS would then be aggregated and cached.
  *   - 'external': The absolute path to an external CSS file that is not hosted
- *     on the local server. These files will not be aggregated if CSS aggregation
- *     is enabled.
- *
+ *     on the local server. These files will not be aggregated if CSS
+ *     aggregation is enabled.
  * @param $options
  *   (optional) A string defining the 'type' of CSS that is being added in the
- *   $data parameter ('file'/'inline'), or an array which can have any or all of
- *   the following keys:
+ *   $data parameter ('file', 'inline', or 'external'), or an array which can
+ *   have any or all of the following keys:
  *   - 'type': The type of stylesheet being added. Available options are 'file',
  *     'inline' or 'external'. Defaults to 'file'.
  *   - 'weight': The weight of the stylesheet specifies the order in which the
- *     CSS will appear when presented on the page.
- *
- *       Available constants are:
- *       - CSS_SYSTEM: Any system-layer CSS.
- *       - CSS_DEFAULT: Any module-layer CSS.
- *       - CSS_THEME: Any theme-layer CSS.
- *
- *       If you need to embed a CSS file before any other module's stylesheets,
- *       for example, you would use CSS_DEFAULT - 1. Note that inline CSS is
- *       simply appended to the end of the specified scope (region), so they
- *       always come last.
- *
+ *     CSS will appear when presented on the page. Available constants are:
+ *     - CSS_SYSTEM: Any system-layer CSS.
+ *     - CSS_DEFAULT: Any module-layer CSS.
+ *     - CSS_THEME: Any theme-layer CSS.
+ *     If you need to embed a CSS file before any other module's stylesheets,
+ *     for example, you would use CSS_DEFAULT - 1. Note that inline CSS is
+ *     simply appended to the end of the specified scope (region), so they
+ *     always come last.
  *   - 'media': The media type for the stylesheet, e.g., all, print, screen.
  *     Defaults to 'all'.
- *   - 'preprocess': Allows the CSS to be aggregated and compressed if the
- *     Optimize CSS feature has been turned on under the performance section.
- *     Defaults to TRUE.
+ *   - 'preprocess': If TRUE, Allows the CSS to be aggregated and compressed if
+ *     the Optimize CSS feature has been turned on under the performance
+ *     section.  Defaults to TRUE.
  *
- *     What does this actually mean?
- *     CSS preprocessing is the process of aggregating a bunch of separate CSS
- *     files into one file that is then compressed by removing all extraneous
- *     white space. Note that preprocessed inline stylesheets will not be
- *     aggregated into this single file, instead it will just be compressed
- *     when being output on the page. External stylesheets will not be
- *     aggregated.
- *
- *     The reason for merging the CSS files is outlined quite thoroughly here:
- *     http://www.die.net/musings/page_load_time/
- *     "Load fewer external objects. Due to request overhead, one bigger file
- *     just loads faster than two smaller ones half its size."
- *
- *     However, you should *not* preprocess every file as this can lead to
- *     redundant caches. You should set $preprocess = FALSE when your styles
- *     are only used rarely on the site. This could be a special admin page,
- *     the homepage, or a handful of pages that does not represent the
- *     majority of the pages on your site.
- *
- *     Typical candidates for caching are for example styles for nodes across
- *     the site, or used in the theme.
  * @return
  *   An array of queued cascading stylesheets.
  */
@@ -4497,7 +4492,7 @@ function _drupal_bootstrap_full() {
     return;
   }
   $called = 1;
-  require_once DRUPAL_ROOT . '/includes/path.inc';
+  require_once DRUPAL_ROOT . '/' . variable_get('path_inc', 'includes/path.inc');
   require_once DRUPAL_ROOT . '/includes/theme.inc';
   require_once DRUPAL_ROOT . '/includes/pager.inc';
   require_once DRUPAL_ROOT . '/includes/menu.inc';
@@ -5075,14 +5070,15 @@ function drupal_render(&$elements) {
 
   $prefix = isset($elements['#prefix']) ? $elements['#prefix'] : '';
   $suffix = isset($elements['#suffix']) ? $elements['#suffix'] : '';
+  $output = $prefix . $elements['#children'] . $suffix;
 
   // Cache the processed element if #cache is set.
   if (isset($elements['#cache'])) {
-    drupal_render_cache_set($prefix . $elements['#children'] . $suffix, $elements);
+    drupal_render_cache_set($output, $elements);
   }
 
   $elements['#printed'] = TRUE;
-  return $prefix . $elements['#children'] . $suffix;
+  return $output;
 }
 
 /**
@@ -5203,13 +5199,19 @@ function drupal_render_cache_get($elements) {
  * @param $elements
  *   A renderable array.
  */
-function drupal_render_cache_set($markup, $elements) {
+function drupal_render_cache_set(&$markup, $elements) {
   // Create the cache ID for the element.
   if (!in_array($_SERVER['REQUEST_METHOD'], array('GET', 'HEAD')) || !$cid = drupal_render_cid_create($elements)) {
     return FALSE;
   }
 
-  $data['#markup'] = $markup;
+  // Cache implementations are allowed to modify the markup, to support
+  // replacing markup with edge-side include commands. The supporting cache
+  // backend will store the markup in some other key (like
+  // $data['#real-value']) and return an include command instead. When the
+  // ESI command is executed by the content accelerator, the real value can
+  // be retrieved and used.
+  $data['#markup'] = &$markup;
   // Persist attached data associated with this element.
   if (isset($elements['#attached'])) {
     $data['#attached'] = $elements['#attached'];
@@ -5881,8 +5883,10 @@ function drupal_write_record($table, &$object, $primary_keys = array()) {
     }
   }
   // If we have a single-field primary key but got no insert ID, the
-  // query failed.
-  elseif (count($primary_keys) == 1) {
+  // query failed. Note that we explicitly check for FALSE, because
+  // a valid update query which doesn't change any values will return
+  // zero (0) affected rows.
+  elseif ($last_insert_id === FALSE && count($primary_keys) == 1) {
     $return = FALSE;
   }
 

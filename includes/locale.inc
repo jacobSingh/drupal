@@ -1,5 +1,5 @@
 <?php
-// $Id: locale.inc,v 1.236 2009-12-02 14:56:32 dries Exp $
+// $Id: locale.inc,v 1.238 2009-12-09 15:35:48 dries Exp $
 
 /**
  * @file
@@ -242,6 +242,7 @@ function locale_languages_edit_form($form, &$form_state, $langcode) {
   }
   else {
     drupal_not_found();
+    drupal_exit();
   }
 }
 
@@ -444,6 +445,7 @@ function locale_languages_delete_form($form, &$form_state, $langcode) {
 
   if (!isset($languages[$langcode])) {
     drupal_not_found();
+    drupal_exit();
   }
   else {
     $form['langcode'] = array('#type' => 'value', '#value' => $langcode);
@@ -1695,7 +1697,7 @@ function _locale_import_po($file, $langcode, $mode, $group = NULL) {
   if ($skips) {
     $skip_message = format_plural($skips, 'One translation string was skipped because it contains disallowed HTML.', '@count translation strings were skipped because they contain disallowed HTML.');
     drupal_set_message($skip_message);
-    watchdog('locale', $skip_message, NULL, WATCHDOG_WARNING);
+    watchdog('locale', '@count disallowed HTML string(s) in %file', array('@count' => $skips, '%file' => $file->uri), WATCHDOG_WARNING);
   }
   return TRUE;
 }
@@ -2369,7 +2371,7 @@ function _locale_import_shorten_comments($comment) {
       break;
     }
   }
-  return substr($comm, 0, -2);
+  return trim(substr($comm, 0, -2));
 }
 
 /**

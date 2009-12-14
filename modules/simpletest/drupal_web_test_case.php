@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.176 2009-12-02 19:26:22 dries Exp $
+// $Id: drupal_web_test_case.php,v 1.179 2009-12-13 09:14:21 webchick Exp $
 
 /**
  * Base class for Drupal tests.
@@ -424,11 +424,10 @@ abstract class DrupalTestCase {
   }
 
   /**
-   * Handle errors.
+   * Handle errors during test runs.
    *
    * Because this is registered in set_error_handler(), it has to be public.
    * @see set_error_handler
-   *
    */
   public function errorHandler($severity, $message, $file = NULL, $line = NULL) {
     if ($severity & error_reporting()) {
@@ -532,7 +531,7 @@ class DrupalUnitTestCase extends DrupalTestCase {
     $this->skipClasses[__CLASS__] = TRUE;
   }
 
-  function setUp() {
+  protected function setUp() {
     global $db_prefix, $conf;
 
     // Store necessary current values before switching to prefixed database.
@@ -556,7 +555,7 @@ class DrupalUnitTestCase extends DrupalTestCase {
     }
   }
 
-  function tearDown() {
+  protected function tearDown() {
     global $db_prefix, $conf;
     if (preg_match('/simpletest\d+/', $db_prefix)) {
       $conf['file_public_path'] = $this->originalFileDirectory;
@@ -1357,14 +1356,16 @@ class DrupalWebTestCase extends DrupalTestCase {
    */
   protected function parse() {
     if (!$this->elements) {
-      // DOM can load HTML soup. But, HTML soup can throw warnings, suppress
-      // them.
-      @$htmlDom = DOMDocument::loadHTML($this->content);
-      if ($htmlDom) {
+      // Suppress all libxml warnings during loading of HTML.
+      // @todo Remove this when core produces XHTML valid output.
+      libxml_use_internal_errors(TRUE);
+      $document = new DOMDocument();
+      $result = $document->loadHTML($this->content);
+      if ($result) {
         $this->pass(t('Valid HTML found on "@path"', array('@path' => $this->getUrl())), t('Browser'));
         // It's much easier to work with simplexml than DOM, luckily enough
         // we can just simply import our DOM tree.
-        $this->elements = simplexml_import_dom($htmlDom);
+        $this->elements = simplexml_import_dom($document);
       }
     }
     if (!$this->elements) {
@@ -1409,7 +1410,7 @@ class DrupalWebTestCase extends DrupalTestCase {
   /**
    * Retrieve a Drupal path or an absolute path and JSON decode the result.
    */
-  function drupalGetAJAX($path, array $options = array(), array $headers = array()) {
+  protected function drupalGetAJAX($path, array $options = array(), array $headers = array()) {
     return drupal_json_decode($this->drupalGet($path, $options, $headers));
   }
 

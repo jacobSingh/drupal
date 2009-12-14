@@ -1,5 +1,5 @@
 <?php
-// $Id: file.field.inc,v 1.11 2009-12-04 16:49:46 dries Exp $
+// $Id: file.field.inc,v 1.14 2009-12-13 12:42:28 dries Exp $
 
 /**
  * @file
@@ -228,18 +228,19 @@ function file_field_load($obj_type, $objects, $field, $instances, $langcode, &$i
 }
 
 /**
- * Implements hook_field_sanitize().
+ * Implements hook_field_prepare_view().
  */
-function file_field_sanitize($obj_type, $object, $field, $instance, $langcode, &$items) {
-  // Remove files from being displayed if they're not displayed.
-  foreach ($items as $delta => $item) {
-    if (!file_field_displayed($item, $field)) {
-      unset($items[$delta]);
+function file_field_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items) {
+  // Remove files specified to not be displayed.
+  foreach ($objects as $id => $object) {
+    foreach ($items[$id] as $delta => $item) {
+      if (!file_field_displayed($item, $field)) {
+        unset($items[$id][$delta]);
+      }
+      // Ensure consecutive deltas.
+      $items[$id] = array_values($items[$id]);
     }
   }
-
-  // Return the items including only displayed files.
-  $items = array_values($items);
 }
 
 /**
@@ -373,9 +374,6 @@ function file_field_formatter_info() {
     'file_table' => array(
       'label' => t('Table of files'),
       'field types' => array('file'),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_CUSTOM,
-      ),
     ),
     'file_url_plain' => array(
       'label' => t('URL to file'),
@@ -844,33 +842,49 @@ function theme_file_upload_help($variables) {
 }
 
 /**
- * Theme function for 'default' file field formatter.
+ * Implements hook_field_formatter().
  */
-function theme_field_formatter_file_default($variables) {
-  $element = $variables['element'];
-  return theme('file_link', array('file' => (object) $element['#item']));
-}
+function file_field_formatter($obj_type, $object, $field, $instance, $langcode, $items, $display) {
+  $element = array();
 
-/**
- * Theme function for 'url_plain' file field formatter.
- */
-function theme_field_formatter_file_url_plain($variables) {
-  $element = $variables['element'];
-  return empty($element['#item']['uri']) ? '' : file_create_url($element['#item']['uri']);
+  switch ($display['type']) {
+    case 'file_default':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array(
+          '#theme' => 'file_link',
+          '#file' => (object) $item,
+        );
+      }
+      break;
+
+    case 'file_url_plain':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array('#markup' => empty($item['uri']) ? '' : file_create_url($item['uri']));
+      }
+      break;
+
+    case 'file_table':
+      // Display all values in a single element..
+      $element[0] = array(
+        '#theme' => 'file_formatter_table',
+        '#items' => $items,
+      );
+      break;
+  }
+
+  return $element;
 }
 
 /**
  * Theme function for the 'table' formatter.
  */
-function theme_field_formatter_file_table($variables) {
-  $element = $variables['element'];
-
+function theme_file_formatter_table($variables) {
   $header = array(t('Attachment'), t('Size'));
   $rows = array();
-  foreach (element_children($element) as $key) {
+  foreach ($variables['items'] as $delta => $item) {
     $rows[] = array(
-      theme('file_link', array('file' => (object) $element[$key]['#item'])),
-      format_size($element[$key]['#item']['filesize']),
+      theme('file_link', array('file' => (object) $item)),
+      format_size($item['filesize']),
     );
   }
 

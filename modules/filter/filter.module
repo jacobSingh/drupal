@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.module,v 1.306 2009-12-04 16:49:46 dries Exp $
+// $Id: filter.module,v 1.310 2009-12-10 15:39:43 dries Exp $
 
 /**
  * @file
@@ -12,10 +12,18 @@
 function filter_help($path, $arg) {
   switch ($path) {
     case 'admin/help#filter':
-      $output = '<p>' . t("The filter module allows administrators to configure text formats for use on your site. A text format defines the HTML tags, codes, and other input allowed in both content and comments, and is a key feature in guarding against potentially damaging input from malicious users. Two formats included by default are <em>Filtered HTML</em> (which allows only an administrator-approved subset of HTML tags) and <em>Full HTML</em> (which allows the full set of HTML tags). Additional formats may be created by an administrator.") . '</p>';
-      $output .= '<p>' . t('Each text format uses filters to manipulate text, and most formats apply several different filters to text in a specific order. Each filter is designed for a specific purpose, and generally either adds, removes or transforms elements within user-entered text before it is displayed. A filter does not change the actual content of a post, but instead, modifies it temporarily before it is displayed. A filter may remove unapproved HTML tags, for instance, while another automatically adds HTML to make links referenced in text clickable.') . '</p>';
-      $output .= '<p>' . t('Users with access to more than one text format can use the <em>Text format</em> fieldset to choose between available text formats when creating or editing multi-line content. Administrators determine the text formats available to each user role and control the order of formats listed in the <em>Text format</em> fieldset.') . '</p>';
-      $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@filter">Filter module</a>.', array('@filter' => 'http://drupal.org/handbook/modules/filter/')) . '</p>';
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('The Filter module allows administrators to configure text formats. A text format defines the HTML tags, codes, and other input allowed in content and comments, and is a key feature in guarding against potentially damaging input from malicious users. For more information, see the online handbook entry for <a href="@filter">Filter module</a>.', array('@filter' => 'http://drupal.org/handbook/modules/filter/')) . '</p>';
+      $output .= '<h3>' . t('Uses') . '</h3>';
+      $output .= '<dl>';
+      $output .= '<dt>' . t('Applying filters to text') . '</dt>';
+      $output .= '<dd>' . t('Each text format uses filters to manipulate text, and most formats apply several different filters to text in a specific order. Each filter is designed for a specific purpose, and generally either adds, removes or transforms elements within user-entered text before it is displayed. A filter does not change the actual content, but instead, modifies it temporarily before it is displayed. One filter may remove unapproved HTML tags, while another automatically adds HTML to make URLS display as clickable links.') . '</dd>';
+      $output .= '<dt>' . t('Defining text formats') . '</dt>';
+      $output .= '<dd>' . t('There are three formats included by default; <em>Filtered HTML</em> (which allows only an administrator-approved subset of HTML tags), <em>Full HTML</em> (which allows the full set of HTML tags), and <em>Plain text</em> (which removes all HTML tags). Additional formats may be created by an administrator on the <a href="@text-formats">Text formats page</a>.', array('@text-formats' => url('admin/config/content/formats'))) . '</dd>';
+      $output .= '<dt>' . t('Choosing a text format') . '</dt>';
+      $output .= '<dd>' . t('Users with access to more than one text format can use the <em>Text format</em> fieldset to choose between available text formats when creating or editing multi-line content. Administrators can determine the text formats available to each user role, and control the order of formats listed in the <em>Text format</em> fieldset on the <a href="@text-formats">Text formats page</a>.', array('@text-formats' => url('admin/config/content/formats'))) . '</dd>';
+      $output .= '</dl>';
       return $output;
     case 'admin/config/content/formats':
       $output = '<p>' . t("Control which HTML tags and other formatting can be used for text input. Don't allow too much formatting for untrusted users. This can be a serious security risk.") . '</p>';
@@ -460,7 +468,8 @@ function filter_default_format($account = NULL) {
   }
   // Get a list of formats for this user, ordered by weight. The first one
   // available is the user's default format.
-  $format = array_shift(filter_formats($account));
+  $formats = filter_formats($account);
+  $format = reset($formats);
   return $format->format;
 }
 
@@ -817,10 +826,12 @@ function _filter_tips($format_id, $long = FALSE) {
  *   A DOMDocument that represents the loaded (X)HTML snippet.
  */
 function filter_dom_load($text) {
-  // Ignore warnings during HTML soup loading.
-  $dom_document = @DOMDocument::loadHTML('<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>' . $text . '</body></html>');
+  // Suppress all libxml warnings during loading of HTML.
+  libxml_use_internal_errors(TRUE);
+  $document = new DOMDocument();
+  $document->loadHTML('<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>' . $text . '</body></html>');
 
-  return $dom_document;
+  return $document;
 }
 
 /**
@@ -927,7 +938,7 @@ function filter_filter_info() {
 /**
  * Settings callback for the HTML filter.
  */
-function _filter_html_settings($form, &$form_state, $filter, $defaults) {
+function _filter_html_settings($form, &$form_state, $filter, $format, $defaults) {
   $settings['allowed_html'] = array(
     '#type' => 'textfield',
     '#title' => t('Allowed HTML tags'),
@@ -1073,7 +1084,7 @@ function _filter_html_tips($filter, $format, $long = FALSE) {
 /**
  * Settings callback for URL filter.
  */
-function _filter_url_settings($form, &$form_state, $filter, $defaults) {
+function _filter_url_settings($form, &$form_state, $filter, $format, $defaults) {
   $settings['filter_url_length'] = array(
     '#type' => 'textfield',
     '#title' => t('Maximum link text length'),
