@@ -1,4 +1,4 @@
-// $Id: overlay-parent.js,v 1.5 2009-12-12 19:19:09 dries Exp $
+// $Id: overlay-parent.js,v 1.7 2009-12-15 05:28:59 webchick Exp $
 
 (function ($) {
 
@@ -19,8 +19,8 @@ Drupal.behaviors.overlayParent = {
 
     // Simulate the native click event for all links that appear outside the
     // overlay. jQuery UI Dialog prevents all clicks outside a modal dialog.
-    $('.overlay-displace-top a', context)
-    .add('.overlay-displace-bottom a', context)
+    $('.overlay-displace-top a:not(.overlay-displace-no-click)', context)
+    .add('.overlay-displace-bottom a:not(.overlay-displace-no-click)', context)
     .click(function () {
       window.location.href = this.href;
     });
@@ -254,6 +254,12 @@ Drupal.overlay.create = function () {
 Drupal.overlay.load = function (url) {
   var self = this;
   var iframe = self.iframe.$element.get(0);
+  
+  // Add a loaded class to the overlay once the iframe is loaded.
+  $(iframe).load(function () {
+    $('.overlay').addClass('overlay-loaded');
+  });
+  
   // Get the document object of the iframe window.
   // @see http://xkr.us/articles/dom/iframe-document/
   var doc = (iframe.contentWindow || iframe.contentDocument);

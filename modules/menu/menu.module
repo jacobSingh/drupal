@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.module,v 1.221 2009-12-04 16:49:46 dries Exp $
+// $Id: menu.module,v 1.223 2009-12-14 20:38:15 dries Exp $
 
 /**
  * @file
@@ -24,7 +24,7 @@ function menu_help($path, $arg) {
       $output .= '<h3>' . t('Uses') . '</h3>';
       $output .= '<dl>';
       $output .= '<dt>' . t('Managing menus') . '</dt>';
-      $output .= '<dd>' . t('Users with the <em>Administer menus</em> permission can add, edit and delete custom menus on the <a href="@menu">Menus administration page</a>. Custom menus can be special site menus, menus of external links, or any combination of internal and external links. You may create an unlimited number of additional menus, each of which will automatically have an associated block. By selecting <em>list links</em>, you can add, edit, or delete links for a given menu. The links listing page provides a drag-and-drop interface for controlling the order of links, and creating a hierarchy within the menu.', array('@menu' => url('admin/structure/menu'), '@add-menu' => url('admin/structure/menu/add'))) . '</dd>';
+      $output .= '<dd>' . t('Users with the <em>Administer menus and menu items</em> permission can add, edit and delete custom menus on the <a href="@menu">Menus administration page</a>. Custom menus can be special site menus, menus of external links, or any combination of internal and external links. You may create an unlimited number of additional menus, each of which will automatically have an associated block. By selecting <em>list links</em>, you can add, edit, or delete links for a given menu. The links listing page provides a drag-and-drop interface for controlling the order of links, and creating a hierarchy within the menu.', array('@menu' => url('admin/structure/menu'), '@add-menu' => url('admin/structure/menu/add'))) . '</dd>';
       $output .= '<dt>' . t('Displaying menus') . '</dt>';
       $output .= '<dd>' . t('After you have created a menu, you must enable and position the associated block on the <a href="@blocks">Blocks administration page</a>.', array('@blocks' => url('admin/structure/block'))) . '</dd>';
       $output .= '</dl>';
@@ -399,15 +399,23 @@ function _menu_parents_recurse($tree, $menu_name, $indent, &$options, $exclude, 
 }
 
 /**
- * Reset a system-defined menu item.
+ * Reset a system-defined menu link.
  */
-function menu_reset_item($item) {
-  $new_item = _menu_link_build(menu_get_item($item['router_path']));
+function menu_reset_item($link) {
+  // To reset the link to its original values, we need to retrieve its
+  // definition from hook_menu(). Otherwise, for example, the link's menu would
+  // not be reset, because properties like the original 'menu_name' are not
+  // stored anywhere else. Since resetting a link happens rarely and this is a
+  // one-time operation, retrieving the full menu router does no harm.
+  $menu = menu_get_router();
+  $router_item = $menu[$link['router_path']];
+  $new_link = _menu_link_build($router_item);
+  // Merge existing menu link's ID and 'has_children' property.
   foreach (array('mlid', 'has_children') as $key) {
-    $new_item[$key] = $item[$key];
+    $new_link[$key] = $link[$key];
   }
-  menu_link_save($new_item);
-  return $new_item;
+  menu_link_save($new_link);
+  return $new_link;
 }
 
 /**

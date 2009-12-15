@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.179 2009-12-13 09:14:21 webchick Exp $
+// $Id: drupal_web_test_case.php,v 1.182 2009-12-15 05:25:47 webchick Exp $
 
 /**
  * Base class for Drupal tests.
@@ -148,7 +148,11 @@ abstract class DrupalTestCase {
    * the method behaves just like DrupalTestCase::assert() in terms of storing
    * the assertion.
    *
+   * @return
+   *   Message ID of the stored assertion.
+   *
    * @see DrupalTestCase::assert()
+   * @see DrupalTestCase::deleteAssert()
    */
   public static function insertAssert($test_id, $test_class, $status, $message = '', $group = 'Other', array $caller = array()) {
     // Convert boolean status to string status.
@@ -173,8 +177,24 @@ abstract class DrupalTestCase {
       'file' => $caller['file'],
     );
 
-    db_insert('simpletest')
+    return db_insert('simpletest')
       ->fields($assertion)
+      ->execute();
+  }
+
+  /**
+   * Delete an assertion record by message ID.
+   * 
+   * @param $message_id
+   *   Message ID of the assertion to delete.
+   * @return
+   *   TRUE if the assertion was deleted, FALSE otherwise.
+   * 
+   * @see DrupalTestCase::insertAssert()
+   */
+  public static function deleteAssert($message_id) {
+    return (bool) db_delete('simpletest')
+      ->condition('message_id', $message_id)
       ->execute();
   }
 
@@ -402,11 +422,20 @@ abstract class DrupalTestCase {
     }
 
     set_error_handler(array($this, 'errorHandler'));
-    $methods = array();
+    $class = get_class($this);
     // Iterate through all the methods in this class.
-    foreach (get_class_methods(get_class($this)) as $method) {
+    foreach (get_class_methods($class) as $method) {
       // If the current method starts with "test", run it - it's a test.
       if (strtolower(substr($method, 0, 4)) == 'test') {
+        // Insert a fail record. This will be deleted on completion to ensure
+        // that testing completed.
+        $method_info = new ReflectionMethod($class, $method);
+        $caller = array(
+          'file' => $method_info->getFileName(),
+          'line' => $method_info->getStartLine(),
+          'function' => $class . '->' . $method . '()',
+        );
+        $completion_check_id = DrupalTestCase::insertAssert($this->testId, $class, FALSE, t('The test did not complete due to a fatal error.'), 'Completion check', $caller);
         $this->setUp();
         try {
           $this->$method();
@@ -416,6 +445,8 @@ abstract class DrupalTestCase {
           $this->exceptionHandler($e);
         }
         $this->tearDown();
+        // Remove the completion check record.
+        DrupalTestCase::deleteAssert($completion_check_id);
       }
     }
     // Clear out the error messages and restore error handler.
@@ -1048,12 +1079,17 @@ class DrupalWebTestCase extends DrupalTestCase {
 
     // Create test directory ahead of installation so fatal errors and debug
     // information can be logged during installation process.
-    $directory = $this->originalFileDirectory . '/simpletest/' . substr($db_prefix, 10);
-    file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
+    // Use temporary files directory with the same prefix as the database.
+    $public_files_directory  = $this->originalFileDirectory . '/simpletest/' . substr($db_prefix, 10);
+    $private_files_directory = $public_files_directory . '/private';
+
+    // Create the directories
+    file_prepare_directory($public_files_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
+    file_prepare_directory($private_files_directory, FILE_CREATE_DIRECTORY);
 
     // Log fatal errors.
     ini_set('log_errors', 1);
-    ini_set('error_log', $directory . '/error.log');
+    ini_set('error_log', $public_files_directory . '/error.log');
 
     // Reset all statics so that test is performed with a clean environment.
     drupal_static_reset();
@@ -1111,21 +1147,12 @@ class DrupalWebTestCase extends DrupalTestCase {
     unset($GLOBALS['conf']['language_default']);
     $language = language_default();
 
-    // Use the test mail class instead of the default mail handler class.
-    variable_set('mail_system', array('default-system' => 'TestingMailSystem'));
-
-    // Use temporary files directory with the same prefix as the database.
-    $public_files_directory  = $this->originalFileDirectory . '/' . $db_prefix;
-    $private_files_directory = $public_files_directory . '/private';
-
     // Set path variables
     variable_set('file_public_path', $public_files_directory);
     variable_set('file_private_path', $private_files_directory);
 
-    // Create the directories
-    $directory = file_directory_path('public');
-    file_prepare_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
-    file_prepare_directory($private_files_directory, FILE_CREATE_DIRECTORY);
+    // Use the test mail class instead of the default mail handler class.
+    variable_set('mail_system', array('default-system' => 'TestingMailSystem'));
 
     drupal_set_time_limit($this->timeLimit);
   }
@@ -1180,7 +1207,7 @@ class DrupalWebTestCase extends DrupalTestCase {
 
     if (preg_match('/simpletest\d+/', $db_prefix)) {
       // Delete temporary files directory.
-      file_unmanaged_delete_recursive($this->originalFileDirectory . '/' . $db_prefix);
+      file_unmanaged_delete_recursive($this->originalFileDirectory . '/simpletest/' . substr($db_prefix, 10));
 
       // Remove all prefixed tables (all the tables in the schema).
       $schema = drupal_get_schema(NULL, TRUE);
@@ -1356,16 +1383,14 @@ class DrupalWebTestCase extends DrupalTestCase {
    */
   protected function parse() {
     if (!$this->elements) {
-      // Suppress all libxml warnings during loading of HTML.
-      // @todo Remove this when core produces XHTML valid output.
-      libxml_use_internal_errors(TRUE);
-      $document = new DOMDocument();
-      $result = $document->loadHTML($this->content);
-      if ($result) {
+      // DOM can load HTML soup. But, HTML soup can throw warnings, suppress
+      // them.
+      @$htmlDom = DOMDocument::loadHTML($this->content);
+      if ($htmlDom) {
         $this->pass(t('Valid HTML found on "@path"', array('@path' => $this->getUrl())), t('Browser'));
         // It's much easier to work with simplexml than DOM, luckily enough
         // we can just simply import our DOM tree.
-        $this->elements = simplexml_import_dom($document);
+        $this->elements = simplexml_import_dom($htmlDom);
       }
     }
     if (!$this->elements) {
