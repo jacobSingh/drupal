@@ -1,5 +1,5 @@
 <?php
-// $Id: user.module,v 1.1089 2009-12-07 03:45:16 webchick Exp $
+// $Id: user.module,v 1.1095 2009-12-26 16:50:09 dries Exp $
 
 /**
  * @file
@@ -14,7 +14,7 @@ define('USERNAME_MAX_LENGTH', 60);
 /**
  * Maximum length of user e-mail text field.
  */
-define('EMAIL_MAX_LENGTH', 64);
+define('EMAIL_MAX_LENGTH', 254);
 
 /**
  * Implement hook_help().
@@ -26,15 +26,15 @@ function user_help($path, $arg) {
     case 'admin/help#user':
       $output = '';
       $output .= '<h3>' . t('About') . '</h3>';
-      $output .= '<p>' . t('The User module allows users to register, log in, and log out. On this page you can also manage user roles, and permissions associated with those roles. For more information, see the online handbook entry for <a href="@user">User module</a>.', array('@user' => 'http://drupal.org/handbook/modules/user')) . '</p>';
+      $output .= '<p>' . t('The User module allows users to register, log in, and log out. It also allows users with proper permissions to manage user roles (used to classify users) and permissions associated with those roles. For more information, see the online handbook entry for <a href="@user">User module</a>.', array('@user' => 'http://drupal.org/handbook/modules/user')) . '</p>';
       $output .= '<h3>' . t('Uses') . '</h3>';
       $output .= '<dl>';
       $output .= '<dt>' . t('Creating and managing users') . '</dt>';
-      $output .= '<dd>' . t('The User module allows users with the appropriate <a href="@permissions">permissions</a>, including those who do not have an account (anonymous users), to create user accounts. User accounts can be created through the <a href="@people">People administration page</a>, where you can also manage roles, and block or delete user accounts. If allowed, users can create their own accounts on the <a href="@register">User account</a> page.', array('@permissions' => url('admin/config/people/permissions'), '@people' => url('admin/people'), '@register' => url('user/register'))) . '</dd>';
+      $output .= '<dd>' . t('The User module allows users with the appropriate <a href="@permissions">permissions</a> to create user accounts through the <a href="@people">People administration page</a>, where they can also assign users to one or more roles, and block or delete user accounts. If allowed, users without accounts (anonymous users) can create their own accounts on the <a href="@register">Create new account</a> page.', array('@permissions' => url('admin/config/people/permissions', array('fragment' => 'module-user')), '@people' => url('admin/people'), '@register' => url('user/register'))) . '</dd>';
       $output .= '<dt>' . t('User roles and permissions') . '</dt>';
-      $output .= '<dd>' . t('Administrators can set <a href="@permissions_user">permissions</a> for each user role. Permissions grant or deny access to view, administer, create, edit, and delete various configuration settings and content. Each user is assigned to one or more <a href="@roles">roles</a>. By default there are three roles: <em>anonymous</em> (users that are not logged in), <em>authenticated</em> (users that are registered and logged in), and <em>administrator</em> (generally assigned to users who will be administering the site). Additional custom roles can be created on the <a href="@roles">Roles page</a>.', array('@permissions_user' => url('admin/config/people/permissions'), '@roles' => url('admin/config/people/roles'))) . '</dd>';
+      $output .= '<dd>' . t('<em>Roles</em> are used to group and classify users; each user can be assigned one or more roles. By default there are two roles: <em>anonymous user</em> (users that are not logged in) and <em>authenticated user</em> (users that are registered and logged in). Depending on choices you made when you installed Drupal, the installation process may have defined more roles, and you can create additional custom roles on the <a href="@roles">Roles page</a>. After creating roles, you can set permissions for each role on the <a href="@permissions_user">Permissions page</a>. Granting a permission allows users who have been assigned a particular role to perform an action on the site, such as viewing a particular type of content, editing or creating content, administering settings for a particular module, or using a particular function of the site (such as search).', array('@permissions_user' => url('admin/config/people/permissions'), '@roles' => url('admin/config/people/roles'))) . '</dd>';
       $output .= '<dt>' . t('Account settings') . '</dt>';
-      $output .= '<dd>' . t('The <a href="@accounts">Account settings page</a> allows you to manage settings for default role titles, personal contact forms, user registration and account cancellation. On this page you can manage settings for account personalization (including signatures and user pictures) and adapt the texts for the e-mails that are being sent in the user registration process.', array('@accounts'  => url('admin/config/people/accounts'))) . '</dd>';
+      $output .= '<dd>' . t('The <a href="@accounts">Account settings page</a> allows you to manage settings for the displayed name of the anonymous user role, personal contact forms, user registration, and account cancellation. On this page you can also manage settings for account personalization (including signatures and user pictures), and adapt the text for the e-mail messages that are sent automatically during the user registration process.', array('@accounts'  => url('admin/config/people/accounts'))) . '</dd>';
       $output .= '</dl>';
       return $output;
     case 'admin/people/create':
@@ -142,22 +142,14 @@ function user_entity_info() {
           ),
         ),
       ),
+      'view modes' => array(
+        'full' => array(
+          'label' => t('User account'),
+        ),
+      ),
     ),
   );
   return $return;
-}
-
-/**
- * Implements hook_field_build_modes().
- */
-function user_field_build_modes($obj_type) {
-  $modes = array();
-  if ($obj_type == 'user') {
-    $modes = array(
-      'full' => t('User account'),
-    );
-  }
-  return $modes;
 }
 
 /**
@@ -767,11 +759,11 @@ function user_permission() {
   return array(
     'administer permissions' =>  array(
       'title' => t('Administer permissions'),
-      'description' => theme('placeholder', array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
+      'description' => drupal_placeholder(array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
     ),
     'administer users' => array(
       'title' => t('Administer users'),
-      'description' => theme('placeholder', array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
+      'description' => drupal_placeholder(array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
     ),
     'access user profiles' => array(
       'title' => t('View user profiles'),
@@ -785,7 +777,7 @@ function user_permission() {
     ),
     'select account cancellation method' => array(
       'title' => t('Select method for cancelling own account'),
-      'description' => theme('placeholder', array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
+      'description' => drupal_placeholder(array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
     ),
   );
 }
@@ -1525,7 +1517,7 @@ function user_menu() {
     'title' => 'My account',
     'title callback' => 'user_page_title',
     'title arguments' => array(1),
-    'page callback' => 'user_build',
+    'page callback' => 'user_view',
     'page arguments' => array(1),
     'access callback' => 'user_view_access',
     'access arguments' => array(1),
@@ -1562,8 +1554,6 @@ function user_menu() {
 
   $items['user/%user/edit'] = array(
     'title' => 'Edit',
-    'title callback' => 'user_page_title',
-    'title arguments' => array(1),
     'page callback' => 'drupal_get_form',
     'page arguments' => array('user_profile_form', 1),
     'access callback' => 'user_edit_access',
@@ -2131,15 +2121,15 @@ function _user_cancel($edit, $account, $method) {
  *
  * @param $account
  *   A user object.
- * @param $build_mode
- *   Build mode, e.g. 'full'.
+ * @param $view_mode
+ *   View mode, e.g. 'full'.
  *
  * @return
  *   An array as expected by drupal_render().
  */
-function user_build($account, $build_mode = 'full') {
+function user_view($account, $view_mode = 'full') {
   // Retrieve all profile fields and attach to $account->content.
-  user_build_content($account, $build_mode);
+  user_build_content($account, $view_mode);
 
   $build = $account->content;
   // We don't need duplicate rendering info in account->content.
@@ -2148,11 +2138,11 @@ function user_build($account, $build_mode = 'full') {
   $build += array(
     '#theme' => 'user_profile',
     '#account' => $account,
-    '#build_mode' => $build_mode,
+    '#view_mode' => $view_mode,
   );
 
   // Allow modules to modify the structured user.
-  drupal_alter('user_build', $build);
+  drupal_alter('user_view', $build);
 
   return $build;
 }
@@ -2162,19 +2152,19 @@ function user_build($account, $build_mode = 'full') {
  *
  * @param $account
  *   A user object.
- * @param $build_mode
- *   Build mode, e.g. 'full'.
+ * @param $view_mode
+ *   View mode, e.g. 'full'.
  */
-function user_build_content($account, $build_mode = 'full') {
+function user_build_content($account, $view_mode = 'full') {
   // Remove previously built content, if exists.
   $account->content = array();
 
   // Build fields content.
-  field_attach_prepare_view('user', array($account->uid => $account), $build_mode);
-  $account->content += field_attach_view('user', $account, $build_mode);
+  field_attach_prepare_view('user', array($account->uid => $account), $view_mode);
+  $account->content += field_attach_view('user', $account, $view_mode);
 
   // Populate $account->content with a render() array.
-  module_invoke_all('user_view', $account, $build_mode);
+  module_invoke_all('user_view', $account, $view_mode);
 }
 
 /**

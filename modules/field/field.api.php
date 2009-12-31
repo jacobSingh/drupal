@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.55 2009-12-13 12:42:28 dries Exp $
+// $Id: field.api.php,v 1.58 2009-12-26 16:50:08 dries Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -525,7 +525,7 @@ function hook_field_is_empty($item, $field) {
  * Widget hooks are typically called by the Field Attach API during the
  * creation of the field form structure with field_attach_form().
  * @see hook_field_widget_info_alter().
- * @see hook_field_widget().
+ * @see hook_field_widget_form().
  * @see hook_field_widget_error().
  *
  * @return
@@ -542,7 +542,7 @@ function hook_field_is_empty($item, $field) {
  *   - settings: An array whose keys are the names of the settings available
  *     for the widget type, and whose values are the default values for those
  *     settings.
- *   - behaviors: (optional) An array describing behaviors of the formatter.
+ *   - behaviors: (optional) An array describing behaviors of the widget.
  *     - multiple values:
  *       FIELD_BEHAVIOR_DEFAULT (default) if the widget allows the input of one
  *       single field value (most common case). The widget will be repeated for
@@ -649,7 +649,7 @@ function hook_field_widget_info_alter(&$info) {
  * @return
  *   The form elements for a single widget for this field.
  */
-function hook_field_widget(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+function hook_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
   $element += array(
     '#type' => $instance['widget']['type'],
     '#default_value' => isset($items[$delta]) ? $items[$delta] : '',
@@ -684,7 +684,7 @@ function hook_field_widget_error($element, $error) {
  *
  * @see hook_field_formatter_info().
  * @see hook_field_formatter_info_alter().
- * @see hook_field_formatter().
+ * @see hook_field_formatter_view().
  * @see hook_field_formatter_prepare_view().
  *
  * @return
@@ -816,7 +816,7 @@ function hook_field_formatter_prepare_view($obj_type, $objects, $field, $instanc
  *   A renderable array for the $items, as an array of child elements keyed
  *   by numeric indexes starting from 0.
  */
-function hook_field_formatter($obj_type, $object, $field, $instance, $langcode, $items, $display) {
+function hook_field_formatter_view($obj_type, $object, $field, $instance, $langcode, $items, $display) {
   $element = array();
   $settings = $display['settings'];
 
@@ -1030,7 +1030,7 @@ function hook_field_attach_delete_revision($obj_type, $object) {
  *   An associative array containing:
  *   - obj_type: The type of $object; e.g. 'node' or 'user'.
  *   - object: The object with fields to render.
- *   - build_mode: Build mode, e.g. 'full', 'teaser'...
+ *   - view_mode: View mode, e.g. 'full', 'teaser'...
  *   - langcode: The language in which the field values will be displayed.
  */
 function hook_field_attach_view_alter(&$output, $context) {
@@ -1577,16 +1577,6 @@ function hook_field_read_instance($instance) {
 /**********************************************************************
  * TODO: I'm not sure where these belong yet.
  **********************************************************************/
-
-/**
- * TODO
- *
- * Note : Right now this belongs to the "Fieldable Type API".
- * Whether 'build modes' is actually a 'fields' concept is to be debated
- * in a separate overhaul patch for core.
- */
-function hook_field_build_modes($obj_type) {
-}
 
 /**
  * Determine whether the user has access to a given field.

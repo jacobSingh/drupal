@@ -1,5 +1,5 @@
 <?php
-// $Id: ajax.inc,v 1.19 2009-11-22 02:48:37 webchick Exp $
+// $Id: ajax.inc,v 1.21 2009-12-31 13:43:36 dries Exp $
 
 /**
  * @file
@@ -792,7 +792,7 @@ function ajax_command_settings($argument) {
  *   The name or key (in the key value pair) of the data attached to this
  *   selector.
  * @param $value
- *  The value of the data. Not just limited to strings can be any format.
+ *   The value of the data. Not just limited to strings can be any format.
  *
  * @return
  *   An array suitable for use with the ajax_render() function.

@@ -1,5 +1,5 @@
 <?php
-// $Id: form.inc,v 1.419 2009-12-14 13:51:56 dries Exp $
+// $Id: form.inc,v 1.422 2009-12-29 20:16:09 dries Exp $
 
 /**
  * @defgroup forms Form builder functions
@@ -231,12 +231,12 @@ function drupal_build_form($form_id, &$form_state) {
   // the form will simply be re-rendered with the values still in its
   // fields.
   //
-  // If $form_state['rebuild'] has been set and the form has been submitted, we
+  // If $form_state['rebuild'] has been set and input has been processed, we
   // know that we're in a multi-part process of some sort and the form's
   // workflow is not complete. We need to construct a fresh copy of the form,
   // passing in the latest $form_state in addition to any other variables passed
   // into drupal_get_form().
-  if ($form_state['rebuild'] && $form_state['submitted'] && !form_get_errors()) {
+  if ($form_state['rebuild'] && $form_state['process_input'] && !form_get_errors()) {
     $form = drupal_rebuild_form($form_id, $form_state);
   }
   // After processing the form, the form builder or a #process callback may
@@ -1673,21 +1673,21 @@ function _form_set_value(&$form_values, $element, $parents, $value) {
   }
 }
 
-function form_options_flatten($array, $reset = TRUE) {
-  // $reset has been ignored here as the function recurses, retaining
-  // its value while recursing and resetting itself when called.
-  static $return;
+function form_options_flatten($array) {
+  // Always reset static var when first entering the recursion.
+  drupal_static_reset('_form_options_flatten');
+  return _form_options_flatten($array);
+}
 
-  if ($reset) {
-    $return = array();
-  }
+function _form_options_flatten($array) {
+  $return = &drupal_static(__FUNCTION__);
 
   foreach ($array as $key => $value) {
     if (is_object($value)) {
-      form_options_flatten($value->option, FALSE);
+      _form_options_flatten($value->option);
     }
     elseif (is_array($value)) {
-      form_options_flatten($value, FALSE);
+      _form_options_flatten($value);
     }
     else {
       $return[$key] = 1;
@@ -2724,7 +2724,7 @@ function theme_textfield($variables) {
   $extra = '';
   $output = '';
 
-  if ($element['#autocomplete_path'] && menu_valid_path(array('link_path' => $element['#autocomplete_path']))) {
+  if ($element['#autocomplete_path'] && drupal_valid_path($element['#autocomplete_path'])) {
     drupal_add_js('misc/autocomplete.js');
     $class[] = 'form-autocomplete';
     $extra =  '<input class="autocomplete" type="hidden" id="' . $element['#id'] . '-autocomplete" value="' . check_url(url($element['#autocomplete_path'], array('absolute' => TRUE))) . '" disabled="disabled" />';

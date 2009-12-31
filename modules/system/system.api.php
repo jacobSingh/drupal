@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.109 2009-12-13 13:06:45 dries Exp $
+// $Id: system.api.php,v 1.114 2009-12-31 13:22:35 dries Exp $
 
 /**
  * @file
@@ -55,14 +55,14 @@ function hook_hook_info() {
  *
  * @return
  *   An array whose keys are entity type names and whose values identify
- *   properties of those types that the  system needs to know about:
- *   - name: The human-readable name of the type.
+ *   properties of those types that the system needs to know about:
+ *   - label: The human-readable name of the type.
  *   - controller class: The name of the class that is used to load the objects.
- *     The class has to implement the DrupalEntityController interface. Leave
- *     blank to use the DefaultDrupalEntityController implementation.
- *   - base table: (used by DefaultDrupalEntityController) The name of the
+ *     The class has to implement the DrupalEntityControllerInterface interface.
+ *     Leave blank to use the DrupalDefaultEntityController implementation.
+ *   - base table: (used by DrupalDefaultEntityController) The name of the
  *     entity type's base table.
- *   - static cache: (used by DefaultDrupalEntityController) FALSE to disable
+ *   - static cache: (used by DrupalDefaultEntityController) FALSE to disable
  *     static caching of entities during a page request. Defaults to TRUE.
  *   - load hook: The name of the hook which should be invoked by
  *     DrupalDefaultEntityController:attachLoad(), for example 'node_load'.
@@ -109,24 +109,76 @@ function hook_hook_info() {
  *       - access callback: As in hook_menu(). 'user_access' will be assumed if
  *         no value is provided.
  *       - access arguments: As in hook_menu().
+ *   - view modes: An array describing the view modes for the entity type. View
+ *     modes let entities be displayed differently depending on the context.
+ *     For instance, a node can be displayed differently on its own page
+ *     ('full' mode), on the home page or taxonomy listings ('teaser' mode), or
+ *     in an RSS feed ('rss' mode). Modules taking part in the display of the
+ *     entity (notably the Field API) can adjust their behavior depending on
+ *     the requested view mode. Keys of the array are view mode names. Each
+ *     view mode is described by an array with the following key/value pairs:
+ *     - label: The human-readable name of the view mode
  */
 function hook_entity_info() {
   $return = array(
     'node' => array(
-      'name' => t('Node'),
+      'label' => t('Node'),
       'controller class' => 'NodeController',
       'base table' => 'node',
-      'id key' => 'nid',
-      'revision key' => 'vid',
+      'revision table' => 'node_revision',
       'fieldable' => TRUE,
-      'bundle key' => array('bundle' => 'type'),
+      'object keys' => array(
+        'id' => 'nid',
+        'revision' => 'vid',
+        'bundle' => 'type',
+      ),
+      'bundle keys' => array(
+        'bundle' => 'type',
+      ),
       // Node.module handles its own caching.
       // 'cacheable' => FALSE,
-      // Bundles must provide human readable name so
-      // we can create help and error messages about them.
-      'bundles' => node_type_get_names(),
+      'bundles' => array(),
+      'view modes' => array(
+        'full' => array(
+          'label' => t('Full node'),
+        ),
+        'teaser' => array(
+          'label' => t('Teaser'),
+        ),
+        'rss' => array(
+          'label' => t('RSS'),
+        ),
+      ),
     ),
   );
+
+  // Search integration is provided by node.module, so search-related
+  // view modes for nodes are defined here and not in search.module.
+  if (module_exists('search')) {
+    $return['node']['view modes'] += array(
+      'search_index' => array(
+        'label' => t('Search index'),
+      ),
+      'search_result' => array(
+        'label' => t('Search result'),
+      ),
+    );
+  }
+
+  // Bundles must provide a human readable name so we can create help and error
+  // messages, and the path to attach Field admin pages to.
+  foreach (node_type_get_names() as $type => $name) {
+    $return['node']['bundles'][$type] = array(
+      'label' => $name,
+      'admin' => array(
+        'path' => 'admin/structure/types/manage/%node_type',
+        'real path' => 'admin/structure/types/manage/' . str_replace('_', '-', $type),
+        'bundle argument' => 4,
+        'access arguments' => array('administer content types'),
+      ),
+    );
+  }
+
   return $return;
 }
 
@@ -161,7 +213,7 @@ function hook_entity_info_alter(&$entity_info) {
  */
 function hook_entity_load($entities, $type) {
   foreach ($entities as $entity) {
-    $entity->foo = mymodule_add_something($entity, $entity_type);
+    $entity->foo = mymodule_add_something($entity, $type);
   }
 }
 
@@ -2183,7 +2235,7 @@ function hook_disable() {
  *   files found in each enabled module's info file and the core includes
  *   directory. The array is keyed by the file path and contains an array of
  *   the related module's name and weight as used internally by
- *   _registry_rebuild() and related functions.
+ *   _registry_update() and related functions.
  *
  *   For example:
  *   @code
@@ -2193,17 +2245,17 @@ function hook_disable() {
  *     );
  *   @endcode
  * @param $modules
- *   List of all the modules provided as returned by drupal_system_listing().
- *   The list also contains the .info file information in the property 'info'.
- *   An additional 'dir' property has been added to the module information
- *   which provides the path to the directory in which the module resides. The
- *   example shows how to take advantage of the property both properties.
+ *   An array containing all module information stored in the {system} table.
+ *   Each element of the array also contains the module's .info file
+ *   information in the property 'info'. An additional 'dir' property has been
+ *   added to the module information which provides the path to the directory
+ *   in which the module resides. The example shows how to take advantage of
+ *   both properties.
  *
- * @see _registry_rebuild()
- * @see drupal_system_listing()
+ * @see _registry_update()
  * @see simpletest_test_get_all()
  */
-function hook_registry_files_alter(&$files, $module_cache) {
+function hook_registry_files_alter(&$files, $modules) {
   foreach ($modules as $module) {
     // Only add test files for disabled modules, as enabled modules should
     // already include any test files they provide.

@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1066 2009-12-15 08:45:32 dries Exp $
+// $Id: common.inc,v 1.1071 2009-12-27 15:23:49 dries Exp $
 
 /**
  * @file
@@ -1525,9 +1525,6 @@ function t($string, array $args = array(), array $options = array()) {
     $string = $custom_strings[$options['langcode']][$options['context']][$string];
   }
   // Translate with locale module if enabled.
-  // We don't use function_exists() here, because it breaks the testing
-  // framework if the locale module is enabled in the parent site (we cannot
-  // unload functions in PHP).
   elseif (function_exists('locale') && $options['langcode'] != 'en') {
     $string = locale($string, $options['context'], $options['langcode']);
   }
@@ -1546,7 +1543,7 @@ function t($string, array $args = array(), array $options = array()) {
         case '%':
         default:
           // Escaped and placeholder.
-          $args[$key] = theme('placeholder', array('text' => $value));
+          $args[$key] = drupal_placeholder(array('text' => $value));
           break;
 
         case '!':
@@ -5759,7 +5756,7 @@ function drupal_schema_fields_sql($table, $prefix = NULL) {
  * @param $object
  *   The object to write. This is a reference, as defaults according to
  *   the schema may be filled in on the object, as well as ID on the serial
- *   type(s). Both array an object types may be passed.
+ *   type(s). Both array and object types may be passed.
  * @param $primary_keys
  *   If this is an update, specify the primary keys' field names. It is the
  *   caller's responsibility to know if a record for this object already
@@ -6299,6 +6296,7 @@ function entity_get_info($entity_type = NULL) {
           'static cache' => TRUE,
           'load hook' => $name . '_load',
           'bundles' => array(),
+          'view modes' => array(),
           'object keys' => array(),
           'cacheable' => TRUE,
           'translation' => array(),

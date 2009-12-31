@@ -1,5 +1,5 @@
 <?php
-// $Id: user.api.php,v 1.16 2009-11-07 13:35:21 dries Exp $
+// $Id: user.api.php,v 1.18 2009-12-26 16:50:09 dries Exp $
 
 /**
  * @file
@@ -314,10 +314,10 @@ function hook_user_logout($account) {
  *
  * @param $account
  *   The user object on which the operation is being performed.
- * @param $build_mode
- *   Build mode, e.g. 'full'.
+ * @param $view_mode
+ *   View mode, e.g. 'full'.
  */
-function hook_user_view($account, $build_mode) {
+function hook_user_view($account, $view_mode) {
   if (user_access('create blog content', $account)) {
     $account->content['summary']['blog'] =  array(
       '#type' => 'user_profile_item',
@@ -343,9 +343,9 @@ function hook_user_view($account, $build_mode) {
  * @param $build
  *   A renderable array representing the user.
  *
- * @see user_build()
+ * @see user_view()
  */
-function hook_user_build_alter($build) {
+function hook_user_view_alter($build) {
   // Check for the existence of a field added by another module.
   if (isset($build['an_additional_field'])) {
     // Change its weight.
@@ -402,7 +402,7 @@ function hook_user_role_update($role) {
  * Inform other modules that a user role has been deleted.
  *
  * This hook allows you act when a user role has been deleted.
- * If your module stores references to roles, it's recommended that you 
+ * If your module stores references to roles, it's recommended that you
  * implement this hook and delete existing instances of the deleted role
  * in your module database tables.
  *

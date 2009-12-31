@@ -1,5 +1,5 @@
 <?php
-// $Id: node.pages.inc,v 1.103 2009-12-02 19:26:22 dries Exp $
+// $Id: node.pages.inc,v 1.107 2009-12-31 13:35:23 dries Exp $
 
 /**
  * @file
@@ -164,39 +164,38 @@ function node_form($form, &$form_state, $node) {
 
   // Add a log field if the "Create new revision" option is checked, or if the
   // current user has the ability to check that option.
-  if (!empty($node->revision) || user_access('administer nodes')) {
-    $form['revision_information'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Revision information'),
-      '#collapsible' => TRUE,
-      // Collapsed by default when "Create new revision" is unchecked
-      '#collapsed' => !$node->revision,
-      '#group' => 'additional_settings',
-      '#attached' => array(
-        'js' => array(drupal_get_path('module', 'node') . '/node.js'),
+  $form['revision_information'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Revision information'),
+    '#collapsible' => TRUE,
+    // Collapsed by default when "Create new revision" is unchecked
+    '#collapsed' => !$node->revision,
+    '#group' => 'additional_settings',
+    '#attached' => array(
+      'js' => array(drupal_get_path('module', 'node') . '/node.js'),
+    ),
+    '#weight' => 20,
+    '#access' => $node->revision || user_access('administer nodes'),
+  );
+  $form['revision_information']['revision'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Create new revision'),
+    '#default_value' => $node->revision,
+    '#states' => array(
+      // Check the revision log checkbox when the log textarea is filled in.
+      'checked' => array(
+        'textarea[name="log"]' => array('empty' => FALSE),
       ),
-      '#weight' => 20,
-    );
-    $form['revision_information']['revision'] = array(
-      '#access' => user_access('administer nodes'),
-      '#type' => 'checkbox',
-      '#title' => t('Create new revision'),
-      '#default_value' => $node->revision,
-      '#states' => array(
-        // Check the revision log checkbox when the log textarea is filled in.
-        'checked' => array(
-          'textarea[name="log"]' => array('empty' => FALSE),
-        ),
-      ),
-    );
-    $form['revision_information']['log'] = array(
-      '#type' => 'textarea',
-      '#title' => t('Revision log message'),
-      '#rows' => 4,
-      '#default_value' => !empty($node->log) ? $node->log : '',
-      '#description' => t('Provide an explanation of the changes you are making. This will help other authors understand your motivations.'),
-    );
-  }
+    ),
+    '#access' => user_access('administer nodes'),
+  );
+  $form['revision_information']['log'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Revision log message'),
+    '#rows' => 4,
+    '#default_value' => !empty($node->log) ? $node->log : '',
+    '#description' => t('Provide an explanation of the changes you are making. This will help other authors understand your motivations.'),
+  );
 
   // Node author information for administrators
   $form['author'] = array(
@@ -269,7 +268,7 @@ function node_form($form, &$form_state, $node) {
   }
 
   // Add the buttons.
-  $form['buttons'] = array();
+  $form['buttons'] = array('#type' => 'container');
   $form['buttons']['#weight'] = 100;
   $form['buttons']['submit'] = array(
     '#type' => 'submit',
@@ -397,8 +396,8 @@ function theme_node_preview($variables) {
 
   $preview_trimmed_version = FALSE;
 
-  $trimmed = drupal_render(node_build(clone $node, 'teaser'));
-  $full = drupal_render(node_build($node, 'full'));
+  $trimmed = drupal_render(node_view(clone $node, 'teaser'));
+  $full = drupal_render(node_view($node, 'full'));
 
   // Do we need to preview trimmed version of post as well as full version?
   if ($trimmed != $full) {
@@ -521,7 +520,7 @@ function node_revision_overview($node) {
       $row[] = array('data' => t('!date by !username', array('!date' => l(format_date($revision->timestamp, 'short'), "node/$node->nid"), '!username' => theme('username', array('account' => $revision))))
                                . (($revision->log != '') ? '<p class="revision-log">' . filter_xss($revision->log) . '</p>' : ''),
                      'class' => array('revision-current'));
-      $operations[] = array('data' => theme('placeholder', array('text' => t('current revision'))), 'class' => array('revision-current'), 'colspan' => 2);
+      $operations[] = array('data' => drupal_placeholder(array('text' => t('current revision'))), 'class' => array('revision-current'), 'colspan' => 2);
     }
     else {
       $row[] = t('!date by !username', array('!date' => l(format_date($revision->timestamp, 'short'), "node/$node->nid/revisions/$revision->vid/view"), '!username' => theme('username', array('account' => $revision))))
@@ -535,7 +534,7 @@ function node_revision_overview($node) {
     }
     $rows[] = array_merge($row, $operations);
   }
-  
+
   $build['node_revisions_table'] = array(
     '#theme' => 'table',
     '#rows' => $rows,

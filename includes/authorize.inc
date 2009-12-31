@@ -1,5 +1,5 @@
 <?php
-// $Id: authorize.inc,v 1.4 2009-11-01 23:02:13 webchick Exp $
+// $Id: authorize.inc,v 1.6 2009-12-31 13:43:36 dries Exp $
 
 /**
  * @file

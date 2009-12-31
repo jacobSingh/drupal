@@ -1,5 +1,5 @@
 <?php
-// $Id: file.test,v 1.48 2009-12-15 05:22:05 webchick Exp $
+// $Id: file.test,v 1.50 2009-12-28 14:00:01 dries Exp $
 
 /**
  *  @file
@@ -826,7 +826,7 @@ class FileScanDirectoryTest extends FileTestCase {
 
   function setUp() {
     parent::setUp();
-    $this->path = $this->originalFileDirectory . '/simpletest';
+    $this->path = drupal_get_path('module', 'simpletest') . '/files';
   }
 
   /**
@@ -920,10 +920,10 @@ class FileScanDirectoryTest extends FileTestCase {
    * Check that the recurse option decends into subdirectories.
    */
   function testOptionRecurse() {
-    $files = file_scan_directory($this->originalFileDirectory, '/^javascript-/', array('recurse' => FALSE));
+    $files = file_scan_directory(drupal_get_path('module', 'simpletest'), '/^javascript-/', array('recurse' => FALSE));
     $this->assertTrue(empty($files), t("Without recursion couldn't find javascript files."));
 
-    $files = file_scan_directory($this->originalFileDirectory, '/^javascript-/', array('recurse' => TRUE));
+    $files = file_scan_directory(drupal_get_path('module', 'simpletest'), '/^javascript-/', array('recurse' => TRUE));
     $this->assertEqual(2, count($files), t('With recursion we found the expected javascript files.'));
   }
 
@@ -2195,7 +2195,7 @@ class StreamWrapperTest extends DrupalWebTestCase {
     $this->assertEqual(file_build_uri('foo/bar.txt'), 'public://foo/bar.txt', t('Expected scheme was added.'));
     $this->assertEqual(file_directory_path(), variable_get('file_public_path'), t('Expected default directory path was returned.'));
     $this->assertEqual(file_directory_path('public'), variable_get('file_public_path'), t('Expected public directory path was returned.'));
-    $this->assertEqual(file_directory_path('temporary'), conf_path() . '/private/temp', t('Expected temporary directory path was returned.'));
+    $this->assertEqual(file_directory_path('temporary'), variable_get('file_temporary_path'), t('Expected temporary directory path was returned.'));
     $this->assertEqual(file_directory_path($this->scheme), variable_get('stream_public_path', 'sites/default/files'), t('Expected dummy directory path was returned.'));
     $this->assertFalse(file_directory_path('non-existent'), t('No directory path returned for invalid scheme.'));
     variable_set('file_default_scheme', 'private');

@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.557 2009-12-02 14:56:32 dries Exp $
+// $Id: theme.inc,v 1.559 2009-12-28 20:58:08 dries Exp $
 
 /**
  * @file
@@ -1375,21 +1375,6 @@ function theme_disable($theme_list) {
  */
 
 /**
- * Formats text for emphasized display in a placeholder inside a sentence.
- * Used automatically by t().
- *
- * @param $variables
- *   An associative array containing:
- *   - text: The text to format (plain-text).
- *
- * @return
- *   The formatted text (html).
- */
-function theme_placeholder($variables) {
-  return '<em>' . check_plain($variables['text']) . '</em>';
-}
-
-/**
  * Return a themed set of status and/or error messages. The messages are grouped
  * by type.
  *
@@ -1941,7 +1926,8 @@ function theme_item_list($variables) {
         $data = $item;
       }
       if (count($children) > 0) {
-        $data .= theme_item_list($children, NULL, $type, $attributes); // Render nested list
+        // Render nested list.
+        $data .= theme_item_list(array('items' => $children, 'title' => NULL, 'type' => $type, 'attributes' => $attributes));
       }
       if ($i == 0) {
         $attributes['class'][] = 'first';

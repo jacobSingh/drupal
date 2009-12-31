@@ -1,5 +1,5 @@
 <?php
-// $Id: field.default.inc,v 1.26 2009-12-13 12:41:08 dries Exp $
+// $Id: field.default.inc,v 1.30 2009-12-26 16:50:08 dries Exp $
 
 /**
  * @file
@@ -97,13 +97,32 @@ function field_default_insert($obj_type, $object, $field, $instance, $langcode, 
 }
 
 /**
- * Invoke hook_field_formatter_prepare_view() on the relavant formatters.
- */
-function field_default_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items, $options, $build_mode) {
+ * Invokes hook_field_formatter_prepare_view() on the relevant formatters.
+ *
+ * @param $obj_type
+ *   The type of $object; e.g. 'node' or 'user'.
+ * @param $objects
+ *   An array of objects being displayed, keyed by object id.
+ * @param $field
+ *   The field structure for the operation.
+ * @param $instances
+ *   Array of instance structures for $field for each object, keyed by object
+ *   id.
+ * @param $langcode
+ *   The language associated to $items.
+ * @param $items
+ *   Array of field values already loaded for the objects, keyed by object id.
+ * @param $display
+ *   Can be either:
+ *   - the name of a view mode
+ *   - or an array of display settings to use for display, as found in the
+ *     'display' entry of $instance definitions.
+*/
+function field_default_prepare_view($obj_type, $objects, $field, $instances, $langcode, &$items, $display) {
   // Group objects, instances and items by formatter module.
   $modules = array();
   foreach ($instances as $id => $instance) {
-    $display = $instance['display'][$build_mode];
+    $display = is_string($display) ? $instance['display'][$display] : $display;
     if ($display['type'] !== 'hidden') {
       $module = $display['module'];
       $modules[$module] = $module;
@@ -125,25 +144,50 @@ function field_default_prepare_view($obj_type, $objects, $field, $instances, $la
 }
 
 /**
- * Default field 'view' operation.
+ * Builds a renderable array for field values.
  *
- * @see field_attach_view()
+ * @param $obj_type
+ *   The type of $object; e.g. 'node' or 'user'.
+ * @param $objects
+ *   An array of objects being displayed, keyed by object id.
+ * @param $field
+ *   The field structure for the operation.
+ * @param $instances
+ *   Array of instance structures for $field for each object, keyed by object
+ *   id.
+ * @param $langcode
+ *   The language associated to $items.
+ * @param $items
+ *   Array of field values already loaded for the objects, keyed by object id.
+ * @param $display
+ *   Can be either:
+ *   - the name of a view mode;
+ *   - or an array of custom display settings, as found in the 'display' entry
+ *     of $instance definitions.
  */
-function field_default_view($obj_type, $object, $field, $instance, $langcode, $items, $build_mode) {
+function field_default_view($obj_type, $object, $field, $instance, $langcode, $items, $display) {
   list($id, $vid, $bundle) = entity_extract_ids($obj_type, $object);
 
   $addition = array();
 
-  $display = $instance['display'][$build_mode];
+  // Prepare incoming display specifications.
+  if (is_string($display)) {
+    $view_mode = $display;
+    $display = $instance['display'][$view_mode];
+  }
+  else {
+    $view_mode = '_custom_display';
+  }
+
   if ($display['type'] !== 'hidden') {
     // We never want to index fields labels.
-    if ($build_mode == 'search_index') {
+    if ($view_mode == 'search_index') {
       $display['label'] = 'hidden';
     }
 
     // Calling the formatter function through module_invoke() can have a
     // performance impact on pages with many fields and values.
-    $function = $display['module'] . '_field_formatter';
+    $function = $display['module'] . '_field_formatter_view';
     if (function_exists($function)) {
       $elements = $function($obj_type, $object, $field, $instance, $langcode, $items, $display);
     }
@@ -155,10 +199,11 @@ function field_default_view($obj_type, $object, $field, $instance, $langcode, $i
         '#title' => t($instance['label']),
         '#access' => field_access('view', $field, $obj_type, $object),
         '#label_display' => $display['label'],
-        '#build_mode' => $build_mode,
+        '#view_mode' => $view_mode,
         '#language' => $langcode,
         '#field_name' => $field['field_name'],
         '#field_type' => $field['type'],
+        '#field_translatable' => $field['translatable'],
         '#object_type' => $obj_type,
         '#bundle' => $bundle,
         '#object' => $object,

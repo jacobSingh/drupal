@@ -1,5 +1,5 @@
 <?php
-// $Id: field.attach.inc,v 1.64 2009-12-13 12:42:28 dries Exp $
+// $Id: field.attach.inc,v 1.69 2009-12-31 08:26:59 dries Exp $
 
 /**
  * @file
@@ -134,7 +134,6 @@ define('FIELD_STORAGE_INSERT', 'insert');
  *   - update
  *   - delete
  *   - delete revision
- *   - sanitize
  *   - view
  *   - prepare translation
  * @param $obj_type
@@ -143,7 +142,7 @@ define('FIELD_STORAGE_INSERT', 'insert');
  *   The fully formed $obj_type object.
  * @param $a
  *   - The $form in the 'form' operation.
- *   - The value of $build_mode in the 'view' operation.
+ *   - The value of $view_mode in the 'view' operation.
  *   - Otherwise NULL.
  * @param $b
  *   - The $form_state in the 'submit' operation.
@@ -240,6 +239,7 @@ function _field_invoke($op, $obj_type, $object, &$a = NULL, &$b = NULL, $options
  * @param $op
  *   Possible operations include:
  *   - load
+ *   - prepare_view
  *   For all other operations, use _field_invoke() / field_invoke_default()
  *   instead.
  * @param $obj_type
@@ -338,7 +338,7 @@ function _field_invoke_multiple($op, $obj_type, $objects, &$a = NULL, &$b = NULL
     if (function_exists($function)) {
       // Iterate over all the field translations.
       foreach ($grouped_items[$field_id] as $langcode => $items) {
-        $results = $function($obj_type, $grouped_objects[$field_id], $field, $grouped_instances[$field_id], $langcode, $grouped_items[$field_id][$langcode], $options, $a, $b);
+        $results = $function($obj_type, $grouped_objects[$field_id], $field, $grouped_instances[$field_id], $langcode, $grouped_items[$field_id][$langcode], $a, $b);
         if (isset($results)) {
           // Collect results by object.
           // For hooks with array results, we merge results together.
@@ -1111,22 +1111,51 @@ function field_attach_query_revisions($field_id, $conditions, $options = array()
 }
 
 /**
- * Allow formatters to act on fieldable objects prior to rendering.
+ * Prepare field data prior to display.
+ *
+ * This function must be called before field_attach_view(). It lets field
+ * types and formatters load additional data needed for display, and
+ * therefore accepts an array of objects to allow query optimisation when
+ * displaying lists of objects.
+ *
+ * @param $obj_type
+ *   The type of $objects; e.g. 'node' or 'user'.
+ * @param $objects
+ *   An array of objects, keyed by object id.
+ * @param $view_mode
+ *   View mode, e.g. 'full', 'teaser'...
  */
-function field_attach_prepare_view($obj_type, $objects, $build_mode = 'full') {
+function field_attach_prepare_view($obj_type, $objects, $view_mode = 'full') {
+  // To ensure hooks are only run once per entity, only process items without
+  // the _field_view_prepared flag.
+  // @todo: resolve this more generally for both entity and field level hooks.
+  $prepare = array();
+  foreach ($objects as $id => $object) {
+    if (empty($object->_field_view_prepared)) {
+      // Add this entity to the items to be prepared.
+      $prepare[$id] = $object;
+
+      // Mark this item as prepared.
+      $object->_field_view_prepared = TRUE;
+    }
+  }
+
   // First let the field types do their preparation.
-  _field_invoke_multiple('prepare_view', $obj_type, $objects);
+  _field_invoke_multiple('prepare_view', $obj_type, $prepare);
   // Then let the formatters do their own specific massaging.
   // field_default_prepare_view() takes care of dispatching to the correct
-  // formatters according to the display settings for the build mode.
-  _field_invoke_multiple_default('prepare_view', $obj_type, $objects, $build_mode);
+  // formatters according to the display settings for the view mode.
+  _field_invoke_multiple_default('prepare_view', $obj_type, $prepare, $view_mode);
 }
 
 /**
  * Returns a renderable array for the fields on an object.
  *
  * Each field is displayed according to the display options specified in the
- * $instance definition for the given $build_mode.
+ * $instance definition for the given $view_mode.
+ *
+ * The object must have run through field_attach_prepare_view() beforehands.
+ * @see field_attach_prepare_view()
  *
  * Sample structure:
  * @code
@@ -1138,13 +1167,13 @@ function field_attach_prepare_view($obj_type, $objects, $build_mode = 'full') {
  *     '#object' => the fieldable object being displayed,
  *     '#object_type' => the type of the object being displayed,
  *     '#language' => the language of the field values being displayed,
- *     '#build_mode' => the build mode,
+ *     '#view_mode' => the view mode,
  *     '#field_name' => the name of the field,
  *     '#field_type' => the type of the field,
  *     '#formatter' => the name of the formatter,
  *     '#items' => the field values being displayed,
  *     // The element's children are the formatted values returned by
- *     // hook_field_formatter().
+ *     // hook_field_formatter_view().
  *   ),
  * );
  * @endcode
@@ -1153,38 +1182,42 @@ function field_attach_prepare_view($obj_type, $objects, $build_mode = 'full') {
  *   The type of $object; e.g. 'node' or 'user'.
  * @param $object
  *   The object with fields to render.
- * @param $build_mode
- *   Build mode, e.g. 'full', 'teaser'...
+ * @param $view_mode
+ *   View mode, e.g. 'full', 'teaser'...
  * @param $langcode
  *   The language the field values are to be shown in. If no language is
  *   provided the current language is used.
  * @return
  *   A renderable array for the field values.
  */
-function field_attach_view($obj_type, $object, $build_mode = 'full', $langcode = NULL) {
-  // If no language is provided use the current UI language.
+function field_attach_view($obj_type, $object, $view_mode = 'full', $langcode = NULL) {
+  // Invoke field_default_view(). If no language is provided, use the current
+  // UI language.
   $options = array('language' => field_multilingual_valid_language($langcode, FALSE));
-
-  // Let field modules sanitize their data for output.
   $null = NULL;
-  _field_invoke('sanitize', $obj_type, $object, $null, $null, $options);
-
-  $output = _field_invoke_default('view', $obj_type, $object, $build_mode, $null, $options);
+  $output = _field_invoke_default('view', $obj_type, $object, $view_mode, $null, $options);
 
   // Add custom weight handling.
   list($id, $vid, $bundle) = entity_extract_ids($obj_type, $object);
-  $output['#attached']['css'][] = drupal_get_path('module', 'field') . '/theme/field.css';
   $output['#pre_render'][] = '_field_extra_weights_pre_render';
   $output['#extra_fields'] = field_extra_fields($bundle);
 
-  // Let other modules make changes after rendering the view.
+  // Include CSS styles.
+  $output['#attached']['css'][] = drupal_get_path('module', 'field') . '/theme/field.css';
+
+  // Let other modules alter the renderable array.
   $context = array(
     'obj_type' => $obj_type,
     'object' => $object,
-    'build_mode' => $build_mode,
+    'view_mode' => $view_mode,
     'langcode' => $langcode,
   );
   drupal_alter('field_attach_view', $output, $context);
+
+  // Reset the _field_view_prepared flag set in field_attach_prepare_view(),
+  // in case the same object is displayed with different settings later in
+  // the request.
+  unset($object->_field_view_prepared);
 
   return $output;
 }

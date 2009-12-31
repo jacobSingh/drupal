@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.182 2009-12-15 05:25:47 webchick Exp $
+// $Id: drupal_web_test_case.php,v 1.186 2009-12-30 11:41:52 dries Exp $
 
 /**
  * Base class for Drupal tests.
@@ -415,8 +415,9 @@ abstract class DrupalTestCase {
 
     // HTTP auth settings (<username>:<password>) for the simpletest browser
     // when sending requests to the test site.
-    $username = variable_get('simpletest_username', NULL);
-    $password = variable_get('simpletest_password', NULL);
+    $this->httpauth_method = variable_get('simpletest_httpauth_method', CURLAUTH_BASIC);
+    $username = variable_get('simpletest_httpauth_username', NULL);
+    $password = variable_get('simpletest_httpauth_password', NULL);
     if ($username && $password) {
       $this->httpauth_credentials = $username . ':' . $password;
     }
@@ -676,6 +677,11 @@ class DrupalWebTestCase extends DrupalTestCase {
   protected $originalUser = NULL;
 
   /**
+   * HTTP authentication method
+   */
+  protected $httpauth_method = CURLAUTH_BASIC;
+
+  /**
    * HTTP authentication credentials (<username>:<password>).
    */
   protected $httpauth_credentials = NULL;
@@ -689,6 +695,11 @@ class DrupalWebTestCase extends DrupalTestCase {
    * The current session ID, if available.
    */
   protected $session_id = NULL;
+
+  /**
+   * Whether the files were copied to the test files directory.
+   */
+  protected $generatedTestFiles = FALSE;
 
   /**
    * Constructor for DrupalWebTestCase.
@@ -839,13 +850,36 @@ class DrupalWebTestCase extends DrupalTestCase {
    *   List of files that match filter.
    */
   protected function drupalGetTestFiles($type, $size = NULL) {
-    $files = array();
+    if (empty($this->generatedTestFiles)) {
+      // Generate binary test files.
+      $lines = array(64, 1024);
+      $count = 0;
+      foreach ($lines as $line) {
+        simpletest_generate_file('binary-' . $count++, 64, $line, 'binary');
+      }
 
+      // Generate text test files.
+      $lines = array(16, 256, 1024, 2048, 20480);
+      $count = 0;
+      foreach ($lines as $line) {
+        simpletest_generate_file('text-' . $count++, 64, $line);
+      }
+
+      // Copy other test files from simpletest.
+      $original = drupal_get_path('module', 'simpletest') . '/files';
+      $files = file_scan_directory($original, '/(html|image|javascript|php|sql)-.*/');
+      $destination_path = file_directory_path('public');
+      foreach ($files as $file) {
+        file_unmanaged_copy($file->uri, $destination_path);
+      }
+
+      $this->generatedTestFiles = TRUE;
+    }
+
+    $files = array();
     // Make sure type is valid.
     if (in_array($type, array('binary', 'html', 'image', 'javascript', 'php', 'sql', 'text'))) {
-      // Use original file directory instead of one created during setUp().
-      $path = $this->originalFileDirectory . '/simpletest';
-      $files = file_scan_directory($path, '/' . $type . '\-.*/');
+      $files = file_scan_directory(file_directory_path('public'), '/' . $type . '\-.*/');
 
       // If size is set then remove any files that are not of that size.
       if ($size !== NULL) {
@@ -1082,10 +1116,13 @@ class DrupalWebTestCase extends DrupalTestCase {
     // Use temporary files directory with the same prefix as the database.
     $public_files_directory  = $this->originalFileDirectory . '/simpletest/' . substr($db_prefix, 10);
     $private_files_directory = $public_files_directory . '/private';
+    $temp_files_directory    = $private_files_directory . '/temp';
 
     // Create the directories
     file_prepare_directory($public_files_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
     file_prepare_directory($private_files_directory, FILE_CREATE_DIRECTORY);
+    file_prepare_directory($temp_files_directory, FILE_CREATE_DIRECTORY);
+    $this->generatedTestFiles = FALSE;
 
     // Log fatal errors.
     ini_set('log_errors', 1);
@@ -1150,6 +1187,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     // Set path variables
     variable_set('file_public_path', $public_files_directory);
     variable_set('file_private_path', $private_files_directory);
+    variable_set('file_temporary_path', $temp_files_directory);
 
     // Use the test mail class instead of the default mail handler class.
     variable_set('mail_system', array('default-system' => 'TestingMailSystem'));
@@ -1273,6 +1311,7 @@ class DrupalWebTestCase extends DrupalTestCase {
         CURLOPT_HEADERFUNCTION => array(&$this, 'curlHeaderCallback'),
       );
       if (isset($this->httpauth_credentials)) {
+        $curl_options[CURLOPT_HTTPAUTH] = $this->httpauth_method;
         $curl_options[CURLOPT_USERPWD] = $this->httpauth_credentials;
       }
       curl_setopt_array($this->curlHandle, $this->additionalCurlOptions + $curl_options);
@@ -1423,7 +1462,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     $this->refreshVariables(); // Ensure that any changes to variables in the other thread are picked up.
 
     // Replace original page output with new output from redirected page(s).
-    if (($new = $this->checkForMetaRefresh())) {
+    if ($new = $this->checkForMetaRefresh()) {
       $out = $new;
     }
     $this->verbose('GET request to: ' . $path .
@@ -1498,7 +1537,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     $submit_matches = FALSE;
     $ajax = is_array($submit);
     if (isset($path)) {
-      $html = $this->drupalGet($path, $options);
+      $this->drupalGet($path, $options);
     }
     if ($this->parse()) {
       $edit_save = $edit;
@@ -1551,7 +1590,7 @@ class DrupalWebTestCase extends DrupalTestCase {
           $this->refreshVariables();
 
           // Replace original page output with new output from redirected page(s).
-          if (($new = $this->checkForMetaRefresh())) {
+          if ($new = $this->checkForMetaRefresh()) {
             $out = $new;
           }
           $this->verbose('POST request to: ' . $path .
@@ -2722,7 +2761,11 @@ function simpletest_verbose($message, $original_file_directory = NULL, $test_cla
     $class = $test_class;
     $verbose = variable_get('simpletest_verbose', FALSE);
     $directory = $file_directory . '/simpletest/verbose';
-    return file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
+    $writable = file_prepare_directory($directory, FILE_CREATE_DIRECTORY);
+    if ($writable && !file_exists($directory . '/.htaccess')) {
+      file_put_contents($directory . '/.htaccess', "<IfModule mod_expires.c>\nExpiresActive Off\n</IfModule>\n");
+    }
+    return $writable;
   }
   return FALSE;
 }

@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.333 2009-12-07 07:25:24 webchick Exp $
+// $Id: bootstrap.inc,v 1.338 2009-12-30 08:16:55 dries Exp $
 
 /**
  * @file
@@ -37,8 +37,9 @@ define('DRUPAL_MINIMUM_MYSQL',  '5.0');
 define('DRUPAL_MINIMUM_PGSQL',  '8.3');
 
 /**
- * Indicates that the item should never be removed unless explicitly told to
- * using cache_clear_all() with a cache ID.
+ * Indicates that the item should never be removed unless explicitly selected.
+ *
+ * The item may be removed using cache_clear_all() with a cache ID.
  */
 define('CACHE_PERMANENT', 0);
 
@@ -181,9 +182,9 @@ define('DRUPAL_KILOBYTE', 1024);
 /**
  * The language code used when no language is explicitly assigned.
  *
- * Defined by ISO639-2 for "No linguistic content / Not applicable".
+ * Defined by ISO639-2 for "Undetermined".
  */
-define('LANGUAGE_NONE', 'zxx');
+define('LANGUAGE_NONE', 'und');
 
 /**
  * The type of language used to define the content language.
@@ -658,12 +659,14 @@ function drupal_get_filename($type, $name, $filename = NULL) {
   // when a database connection fails.
   else {
     try {
-      $file = db_query("SELECT filename FROM {system} WHERE name = :name AND type = :type", array(':name' => $name, ':type' => $type))->fetchField();
-      if (file_exists($file)) {
-        $files[$type][$name] = $file;
+      if (function_exists('db_query')) {
+        $file = db_query("SELECT filename FROM {system} WHERE name = :name AND type = :type", array(':name' => $name, ':type' => $type))->fetchField();
+        if (file_exists($file)) {
+          $files[$type][$name] = $file;
+        }
       }
     }
-    catch (PDOException $e) {
+    catch (Exception $e) {
       // The database table may not exist because Drupal is not yet installed,
       // or the database might be down. We have a fallback for this case so we
       // hide the error completely.
@@ -675,21 +678,25 @@ function drupal_get_filename($type, $name, $filename = NULL) {
       $dir = $type . 's';
       if ($type == 'theme_engine') {
         $dir = 'themes/engines';
-        $mask = "/$name\.engine$/";
+        $extension = 'engine';
       }
       elseif ($type == 'theme') {
-        $mask = "/$name\.info$/";
+        $extension = 'info';
       }
       else {
-        $mask = "/$name\.$type$/";
+        $extension = $type;
       }
 
       if (!function_exists('drupal_system_listing')) {
         require_once DRUPAL_ROOT . '/includes/common.inc';
       }
-      $matches = drupal_system_listing($mask, $dir, 'name', 0);
-      if (!empty($matches[$name]->uri)) {
-        $files[$type][$name] = $matches[$name]->uri;
+      // Scan the appropriate directories for all files with the requested
+      // extension, not just the file we are currently looking for. This
+      // prevents unnecessary scans from being repeated when this function is
+      // called more than once in the same page request.
+      $matches = drupal_system_listing("/\.$extension$/", $dir, 'name', 0);
+      foreach ($matches as $matched_name => $file) {
+        $files[$type][$matched_name] = $file->uri;
       }
     }
   }
@@ -2092,8 +2099,22 @@ function _registry_check_code($type, $name = NULL) {
  * each interface or class in the database.
  */
 function registry_rebuild() {
+  system_rebuild_module_data();
+  registry_update();
+}
+
+/**
+ * Update the registry based on the latest files listed in the database.
+ *
+ * This function should be used when system_rebuild_module_data() does not need
+ * to be called, because it is already known that the list of files in the
+ * {system} table matches those in the file system.
+ *
+ * @see registry_rebuild()
+ */
+function registry_update() {
   require_once DRUPAL_ROOT . '/includes/registry.inc';
-  _registry_rebuild();
+  _registry_update();
 }
 
 /**
@@ -2246,4 +2267,19 @@ function drupal_static_reset($name = NULL) {
  */
 function drupal_is_cli() {
   return (!isset($_SERVER['SERVER_SOFTWARE']) && (php_sapi_name() == 'cli' || (is_numeric($_SERVER['argc']) && $_SERVER['argc'] > 0)));
+}
+
+/**
+ * Formats text for emphasized display in a placeholder inside a sentence.
+ * Used automatically by t().
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - text: The text to format (plain-text).
+ *
+ * @return
+ *   The formatted text (html).
+ */
+function drupal_placeholder($variables) {
+  return '<em class="placeholder">' . check_plain($variables['text']) . '</em>';
 }

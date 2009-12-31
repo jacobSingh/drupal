@@ -1,5 +1,5 @@
 <?php
-// $Id: field.test,v 1.8 2009-12-13 12:41:08 dries Exp $
+// $Id: field.test,v 1.10 2009-12-26 16:50:08 dries Exp $
 
 /**
  * @file
@@ -1339,10 +1339,11 @@ class FieldInfoTestCase extends FieldTestCase {
     $this->assertIdentical($instance['widget']['settings'], $widget_type['settings'] , t('All expected widget settings are present.'));
 
     // Check that the default formatter is used and expected settings are in place.
-    foreach (field_build_modes('test_entity') as $build_mode => $label) {
-      $this->assertIdentical($instance['display'][$build_mode]['type'], $field_type['default_formatter'], t('Unavailable formatter replaced with default formatter in build_mode %build_mode', array('%build_mode' => $build_mode)));
-      $formatter_type = field_info_formatter_types($instance['display'][$build_mode]['type']);
-      $this->assertIdentical($instance['display'][$build_mode]['settings'], $formatter_type['settings'] , t('All expected formatter settings are present in build_mode %build_mode', array('%build_mode' => $build_mode)));
+    $entity_info = entity_get_info('test_entity');
+    foreach ($entity_info['view modes'] as $view_mode => $info) {
+      $this->assertIdentical($instance['display'][$view_mode]['type'], $field_type['default_formatter'], t('Unavailable formatter replaced with default formatter in view_mode %view_mode', array('%view_mode' => $view_mode)));
+      $formatter_type = field_info_formatter_types($instance['display'][$view_mode]['type']);
+      $this->assertIdentical($instance['display'][$view_mode]['settings'], $formatter_type['settings'] , t('All expected formatter settings are present in view_mode %view_mode', array('%view_mode' => $view_mode)));
     }
   }
 
@@ -1725,6 +1726,107 @@ class FieldFormTestCase extends FieldTestCase {
     $entity = field_test_entity_test_load($id, $entity->ftvid);
     $this->assertEqual($entity->{$field_name_no_access}[$langcode][0]['value'], 99, t('New revision has the expected value for the field with no edit access.'));
     $this->assertEqual($entity->{$field_name}[$langcode][0]['value'], 2, t('New revision has the expected value for the field with edit access.'));
+  }
+}
+
+class FieldDisplayAPITestCase extends FieldTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Field Display API tests',
+      'description' => 'Test the display API.',
+      'group' => 'Field API',
+    );
+  }
+
+  function setUp() {
+    parent::setUp('field_test');
+
+    // Create a field and instance.
+    $this->field_name = 'test_field';
+    $this->label = $this->randomName();
+    $this->cardinality = 4;
+
+    $this->field = array(
+      'field_name' => $this->field_name,
+      'type' => 'test_field',
+      'cardinality' => $this->cardinality,
+    );
+    $this->instance = array(
+      'field_name' => $this->field_name,
+      'object_type' => 'test_entity',
+      'bundle' => 'test_bundle',
+      'label' => $this->label,
+      'display' => array(
+        'full' => array(
+          'type' => 'field_test_default',
+          'settings' => array(
+            'test_formatter_setting' => $this->randomName(),
+          ),
+        ),
+      ),
+    );
+    field_create_field($this->field);
+    field_create_instance($this->instance);
+
+    // Create an entity with values.
+    $this->values = $this->_generateTestFieldValues($this->cardinality);
+    $this->entity = field_test_create_stub_entity();
+    $this->is_new = TRUE;
+    $this->entity->{$this->field_name}[LANGUAGE_NONE] = $this->values;
+    field_test_entity_save($this->entity);
+  }
+
+  /**
+   * Test the field_view_field() function.
+   */
+  function testFieldBuildField() {
+    // No display settings: check that default display settings are used.
+    $output = field_view_field('test_entity', $this->entity, $this->field_name);
+    $this->drupalSetContent(drupal_render($output));
+    $settings = field_info_formatter_settings('field_test_default');
+    $setting = $settings['test_formatter_setting'];
+    $this->assertText($this->label, t('Label was displayed.'));
+    foreach($this->values as $delta => $value) {
+      $this->assertText($setting . '|' . $value['value'], t('Value @delta was displayed with expected setting.', array('@delta' => $delta)));
+    }
+
+    // Check that explicit display settings are used.
+    $display = array(
+      'label' => 'hidden',
+      'type' => 'field_test_multiple',
+      'settings' => array(
+        'test_formatter_setting_multiple' => $this->randomName(),
+      ),
+    );
+    $output = field_view_field('test_entity', $this->entity, $this->field_name, $display);
+    $this->drupalSetContent(drupal_render($output));
+    $setting = $display['settings']['test_formatter_setting_multiple'];
+    $this->assertNoText($this->label, t('Label was not displayed.'));
+    $array = array();
+    foreach($this->values as $delta => $value) {
+      $array[] = $delta . ':' . $value['value'];
+    }
+    $this->assertText($setting . '|' . implode('|', $array), t('Values were displayed with expected setting.'));
+
+    // View mode: check that display settings specified in the instance are
+    // used.
+    $output = field_view_field('test_entity', $this->entity, $this->field_name, 'full');
+    $this->drupalSetContent(drupal_render($output));
+    $setting = $this->instance['display']['full']['settings']['test_formatter_setting'];
+    $this->assertText($this->label, t('Label was displayed.'));
+    foreach($this->values as $delta => $value) {
+      $this->assertText($setting . '|' . $value['value'], t('Value @delta was displayed with expected setting.', array('@delta' => $delta)));
+    }
+
+    // Unknown view mode: check that display settings for 'full' view mode
+    // are used.
+    $output = field_view_field('test_entity', $this->entity, $this->field_name, 'unknown_view_mode');
+    $this->drupalSetContent(drupal_render($output));
+    $setting = $this->instance['display']['full']['settings']['test_formatter_setting'];
+    $this->assertText($this->label, t('Label was displayed.'));
+    foreach($this->values as $delta => $value) {
+      $this->assertText($setting . '|' . $value['value'], t('Value @delta was displayed with expected setting.', array('@delta' => $delta)));
+    }
   }
 }
 
@@ -2226,13 +2328,13 @@ class FieldInstanceCrudTestCase extends FieldTestCase {
     $this->assertIdentical($record['data']['label'], $this->instance_definition['field_name'], t('Label defaults to field name.'));
     $this->assertIdentical($record['data']['description'], '', t('Description defaults to empty string.'));
     $this->assertIdentical($record['data']['widget']['type'], $field_type['default_widget'], t('Default widget has been written.'));
-    $this->assertTrue(isset($record['data']['display']['full']), t('Display for "full" build_mode has been written.'));
-    $this->assertIdentical($record['data']['display']['full']['type'], $field_type['default_formatter'], t('Default formatter for "full" build_mode has been written.'));
+    $this->assertTrue(isset($record['data']['display']['full']), t('Display for "full" view_mode has been written.'));
+    $this->assertIdentical($record['data']['display']['full']['type'], $field_type['default_formatter'], t('Default formatter for "full" view_mode has been written.'));
 
     // Check that default settings are set.
     $this->assertIdentical($record['data']['settings'], $field_type['instance_settings'] , t('Default instance settings have been written.'));
     $this->assertIdentical($record['data']['widget']['settings'], $widget_type['settings'] , t('Default widget settings have been written.'));
-    $this->assertIdentical($record['data']['display']['full']['settings'], $formatter_type['settings'], t('Default formatter settings for "full" build_mode have been written.'));
+    $this->assertIdentical($record['data']['display']['full']['settings'], $formatter_type['settings'], t('Default formatter settings for "full" view_mode have been written.'));
 
     // Guarantee that the field/bundle combination is unique.
     try {
@@ -2310,17 +2412,17 @@ class FieldInstanceCrudTestCase extends FieldTestCase {
     $settings = $info['settings'];
     $this->assertIdentical($settings, array_intersect_key($instance_new['display']['full']['settings'], $settings) , t('Changing formatter type updates default settings.'));
 
-    // Check that adding a new build mode is saved and gets default settings.
+    // Check that adding a new view mode is saved and gets default settings.
     $instance = field_read_instance('test_entity', $this->instance_definition['field_name'], $this->instance_definition['bundle']);
     $instance['display']['teaser'] = array();
     field_update_instance($instance);
 
     $instance_new = field_read_instance('test_entity', $this->instance_definition['field_name'], $this->instance_definition['bundle']);
-    $this->assertTrue(isset($instance_new['display']['teaser']), t('Display for the new build_mode has been written.'));
-    $this->assertIdentical($instance_new['display']['teaser']['type'], $field_type['default_formatter'], t('Default formatter for the new build_mode has been written.'));
+    $this->assertTrue(isset($instance_new['display']['teaser']), t('Display for the new view_mode has been written.'));
+    $this->assertIdentical($instance_new['display']['teaser']['type'], $field_type['default_formatter'], t('Default formatter for the new view_mode has been written.'));
     $info = field_info_formatter_types($instance_new['display']['teaser']['type']);
     $settings = $info['settings'];
-    $this->assertIdentical($settings, $instance_new['display']['teaser']['settings'] , t('Default formatter settings for the new build_mode have been written.'));
+    $this->assertIdentical($settings, $instance_new['display']['teaser']['settings'] , t('Default formatter settings for the new view_mode have been written.'));
 
     // TODO: test failures.
   }

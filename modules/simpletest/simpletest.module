@@ -1,5 +1,5 @@
 <?php
-// $Id: simpletest.module,v 1.84 2009-12-15 05:25:47 webchick Exp $
+// $Id: simpletest.module,v 1.87 2009-12-28 12:06:49 dries Exp $
 
 /**
  * @file
@@ -68,7 +68,7 @@ function simpletest_permission() {
   return array(
     'administer unit tests' => array(
       'title' => t('Administer tests'),
-      'description' => theme('placeholder', array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
+      'description' => drupal_placeholder(array('text' => t('Warning: Give to trusted roles only; this permission has security implications.'))),
     ),
   );
 }
@@ -368,6 +368,8 @@ function simpletest_test_get_all() {
         uksort($tests, 'strnatcasecmp');
       }
 
+      // Allow modules extending core tests to disable originals.
+      drupal_alter('simpletest', $groups);
       cache_set('simpletest', $groups);
     }
   }
@@ -395,6 +397,35 @@ function simpletest_registry_files_alter(&$files, $modules) {
       }
     }
   }
+}
+
+/**
+ * Generate test file.
+ */
+function simpletest_generate_file($filename, $width, $lines, $type = 'binary-text') {
+  $size = $width * $lines - $lines;
+
+  // Generate random text
+  $text = '';
+  for ($i = 0; $i < $size; $i++) {
+    switch ($type) {
+      case 'text':
+        $text .= chr(rand(32, 126));
+        break;
+      case 'binary':
+        $text .= chr(rand(0, 31));
+        break;
+      case 'binary-text':
+      default:
+        $text .= rand(0, 1);
+        break;
+    }
+  }
+  $text = wordwrap($text, $width - 1, "\n", TRUE) . "\n"; // Add \n for symetrical file.
+
+  // Create filename.
+  file_put_contents(file_directory_path() . '/' . $filename . '.txt', $text);
+  return $filename;
 }
 
 /**
