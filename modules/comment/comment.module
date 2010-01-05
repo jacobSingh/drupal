@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.822 2009-12-26 16:50:08 dries Exp $
+// $Id: comment.module,v 1.825 2010-01-05 15:30:30 dries Exp $
 
 /**
  * @file
@@ -291,6 +291,9 @@ function comment_permission() {
     ),
     'post comments without approval' => array(
       'title' => t('Post comments without approval'),
+    ),
+    'edit own comments' => array(
+      'title' => t('Edit own comments'),
     ),
   );
 }
@@ -1256,7 +1259,7 @@ function comment_access($op, $comment) {
   global $user;
 
   if ($op == 'edit') {
-    return ($user->uid && $user->uid == $comment->uid && comment_num_replies($comment->cid) == 0) || user_access('administer comments');
+    return ($user->uid && $user->uid == $comment->uid && user_access('edit own comments')) || user_access('administer comments');
   }
 }
 
@@ -1464,21 +1467,21 @@ function comment_delete_multiple($cids) {
 function comment_operations($action = NULL) {
   if ($action == 'publish') {
     $operations = array(
-      'publish' => array(t('Publish the selected comments'), db_update('comment')->fields(array( 'status' => COMMENT_PUBLISHED)) ),
-      'delete' => array(t('Delete the selected comments'), '')
+      'publish' => array(t('Publish the selected comments'), db_update('comment')->fields(array('status' => COMMENT_PUBLISHED))),
+      'delete' => array(t('Delete the selected comments'), ''),
     );
   }
   elseif ($action == 'unpublish') {
     $operations = array(
-      'unpublish' => array(t('Unpublish the selected comments'), db_update('comment')->fields(array( 'status' => COMMENT_NOT_PUBLISHED)) ),
-      'delete' => array(t('Delete the selected comments'), '')
+      'unpublish' => array(t('Unpublish the selected comments'), db_update('comment')->fields(array('status' => COMMENT_NOT_PUBLISHED))),
+      'delete' => array(t('Delete the selected comments'), ''),
     );
   }
   else {
     $operations = array(
-      'publish' => array(t('Publish the selected comments'), db_update('comment')->fields(array( 'status' => COMMENT_PUBLISHED)) ),
-      'unpublish' => array(t('Unpublish the selected comments'), db_update('comment')->fields(array( 'status' => COMMENT_NOT_PUBLISHED)) ),
-      'delete' => array(t('Delete the selected comments'), '')
+      'publish' => array(t('Publish the selected comments'), db_update('comment')->fields(array('status' => COMMENT_PUBLISHED))),
+      'unpublish' => array(t('Unpublish the selected comments'), db_update('comment')->fields(array('status' => COMMENT_NOT_PUBLISHED))),
+      'delete' => array(t('Delete the selected comments'), ''),
     );
   }
 
@@ -1541,27 +1544,6 @@ class CommentController extends DrupalDefaultEntityController {
     }
     parent::attachLoad($comments);
   }
-}
-
-/**
- * Get replies count for a comment.
- *
- * @param $pid
- *   The comment id.
- * @return
- *   The replies count.
- */
-function comment_num_replies($pid) {
-  $cache = &drupal_static(__FUNCTION__, array());
-
-  if (!isset($cache[$pid])) {
-    $cache[$pid] = db_query('SELECT COUNT(cid) FROM {comment} WHERE pid = :pid AND status = :status', array(
-      ':pid' => $pid,
-      ':status' => COMMENT_PUBLISHED,
-    ))->fetchField();
-  }
-
-  return $cache[$pid];
 }
 
 /**
@@ -1846,13 +1828,14 @@ function comment_form($form, &$form_state, $comment) {
   // already previewing the submission. However, if there are form errors,
   // we hide the save button no matter what, so that optional form elements
   // (e.g., captchas) can be updated.
-  $form['submit'] = array(
+  $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save'),
     '#access' => ($comment->cid && user_access('administer comments')) || variable_get('comment_preview_' . $node->type, DRUPAL_OPTIONAL) != DRUPAL_REQUIRED || (!form_get_errors() && isset($form_state['comment_preview'])),
     '#weight' => 19,
   );
-  $form['preview'] = array(
+  $form['actions']['preview'] = array(
     '#type' => 'submit',
     '#value' => t('Preview'),
     '#access' => (variable_get('comment_preview_' . $node->type, DRUPAL_OPTIONAL) != DRUPAL_DISABLED),

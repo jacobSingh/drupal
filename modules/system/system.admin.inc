@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.242 2009-12-28 20:51:18 dries Exp $
+// $Id: system.admin.inc,v 1.246 2010-01-04 21:31:52 webchick Exp $
 
 /**
  * @file
@@ -289,6 +289,12 @@ function system_themes_page() {
           'query' => $query,
           'attributes' => array('title' => t('Enable !theme theme', array('!theme' => $theme->info['name']))),
         );
+        $theme->operations[] = array(
+          'title' => t('Enable and set default'),
+          'href' => 'admin/appearance/default',
+          'query' => $query,
+          'attributes' => array('title' => t('Enable !theme as default theme', array('!theme' => $theme->info['name']))),
+        );
       }
     }
 
@@ -343,7 +349,8 @@ function system_themes_admin_form($form, &$form_state, $theme_options) {
     '#title' => t('Use the administration theme when editing or creating content'),
     '#default_value' => variable_get('node_admin_theme', '0'),
   );
-  $form['admin_theme']['submit'] = array(
+  $form['admin_theme']['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['admin_theme']['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save configuration'),
   );
@@ -944,11 +951,12 @@ function system_modules($form, $form_state = array()) {
     );
   }
 
-  $form['submit'] = array(
+  $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save configuration'),
   );
-  $form['#action'] = url('admin/config/modules/list/confirm');
+  $form['#action'] = url('admin/modules/list/confirm');
 
   return $form;
 }
@@ -1090,7 +1098,7 @@ function system_modules_confirm_form($modules, $storage) {
     $form = confirm_form(
       $form,
       t('Some required modules must be enabled'),
-      'admin/config/modules',
+      'admin/modules',
       t('Would you like to continue with the above?'),
       t('Continue'),
       t('Cancel'));
@@ -1239,7 +1247,7 @@ function system_modules_submit($form, &$form_state) {
   drupal_clear_css_cache();
   drupal_clear_js_cache();
 
-  $form_state['redirect'] = 'admin/config/modules';
+  $form_state['redirect'] = 'admin/modules';
 
   // Notify locale module about module changes, so translations can be
   // imported. This might start a batch, and only return to the redirect
@@ -1298,11 +1306,12 @@ function system_modules_uninstall($form, $form_state = NULL) {
       '#type' => 'checkboxes',
       '#options' => $options,
     );
-    $form['buttons']['submit'] = array(
+    $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+    $form['actions']['submit'] = array(
       '#type' => 'submit',
       '#value' => t('Uninstall'),
     );
-    $form['#action'] = url('admin/config/modules/uninstall/confirm');
+    $form['#action'] = url('admin/modules/uninstall/confirm');
   }
   else {
     $form['modules'] = array();
@@ -1343,7 +1352,7 @@ function system_modules_uninstall_confirm_form($storage) {
     $form = confirm_form(
       $form,
       t('Confirm uninstall'),
-      'admin/config/modules/uninstall',
+      'admin/modules/uninstall',
       t('Would you like to continue with uninstalling the above?'),
       t('Uninstall'),
       t('Cancel'));
@@ -1358,7 +1367,7 @@ function system_modules_uninstall_validate($form, &$form_state) {
   // Form submitted, but no modules selected.
   if (!count(array_filter($form_state['values']['uninstall']))) {
     drupal_set_message(t('No modules selected.'), 'error');
-    drupal_goto('admin/config/modules/uninstall');
+    drupal_goto('admin/modules/uninstall');
   }
 }
 
@@ -1375,7 +1384,7 @@ function system_modules_uninstall_submit($form, &$form_state) {
     drupal_uninstall_modules($modules);
     drupal_set_message(t('The selected modules have been uninstalled.'));
 
-    $form_state['redirect'] = 'admin/config/modules/uninstall';
+    $form_state['redirect'] = 'admin/modules/uninstall';
   }
   else {
     $form_state['storage'] = $form_state['values'];
@@ -2738,7 +2747,7 @@ function system_date_time_formats() {
     '#theme' => 'table',
     '#header' => $header,
     '#rows' => $rows,
-    '#empty' => ('No custom date formats available.'),
+    '#empty' => t('No custom date formats available. <a href="@link">Add date format</a>.', array('@link' => url('admin/config/regional/date-time/formats/add'))),
   );
 
   return $build;
@@ -2781,7 +2790,8 @@ function system_configure_date_formats_form($form, &$form_state, $dfid = 0) {
     ),
   );
 
-  $form['update'] = array(
+  $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['actions']['update'] = array(
     '#type' => 'submit',
     '#value' => ($dfid ? t('Save format') : t('Add format')),
   );
@@ -2908,7 +2918,8 @@ function system_actions_manage_form($form, &$form_state, $options = array()) {
     '#options' => $options,
     '#description' => '',
   );
-  $form['parent']['buttons']['submit'] = array(
+  $form['parent']['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['parent']['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Create'),
   );
@@ -3004,7 +3015,8 @@ function system_actions_configure($form, &$form_state, $action = NULL) {
     '#type' => 'hidden',
     '#value' => '1',
   );
-  $form['buttons']['submit'] = array(
+  $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save'),
     '#weight' => 13

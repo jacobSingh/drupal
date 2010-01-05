@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1071 2009-12-27 15:23:49 dries Exp $
+// $Id: common.inc,v 1.1077 2010-01-04 23:08:34 webchick Exp $
 
 /**
  * @file
@@ -228,7 +228,7 @@ function drupal_get_profile() {
     $profile = $install_state['parameters']['profile'];
   }
   else {
-    $profile = variable_get('install_profile', 'default');
+    $profile = variable_get('install_profile', 'standard');
   }
 
   return $profile;
@@ -4370,6 +4370,7 @@ function drupal_clear_js_cache() {
  * We use HTML-safe strings, i.e. with <, > and & escaped.
  *
  * @see drupal_json_decode()
+ * @ingroup php_wrappers
  */
 function drupal_json_encode($var) {
   // json_encode() does not escape <, > and &, so we do it with str_replace().
@@ -4380,6 +4381,7 @@ function drupal_json_encode($var) {
  * Converts an HTML-safe JSON string into its PHP equivalent.
  *
  * @see drupal_json_encode()
+ * @ingroup php_wrappers
  */
 function drupal_json_decode($var) {
   // json_decode() does not unescape <, > and &, so we do it with str_replace().
@@ -4496,7 +4498,7 @@ function _drupal_bootstrap_full() {
   require_once DRUPAL_ROOT . '/' . variable_get('path_inc', 'includes/path.inc');
   require_once DRUPAL_ROOT . '/includes/theme.inc';
   require_once DRUPAL_ROOT . '/includes/pager.inc';
-  require_once DRUPAL_ROOT . '/includes/menu.inc';
+  require_once DRUPAL_ROOT . '/' . variable_get('menu_inc', '/includes/menu.inc');
   require_once DRUPAL_ROOT . '/includes/tablesort.inc';
   require_once DRUPAL_ROOT . '/includes/file.inc';
   require_once DRUPAL_ROOT . '/includes/unicode.inc';
@@ -6034,7 +6036,7 @@ function drupal_parse_info_format($data) {
 
       // Handle PHP constants.
       if (isset($constants[$value])) {
-        $value = constant($value);
+        $value = $constants[$value];
       }
 
       // Insert actual value

@@ -1,5 +1,5 @@
 <?php
-// $Id: content_types.inc,v 1.106 2009-12-22 14:01:05 dries Exp $
+// $Id: content_types.inc,v 1.108 2010-01-03 21:01:04 webchick Exp $
 
 /**
  * @file
@@ -48,7 +48,7 @@ function node_overview_types() {
     '#theme' => 'table',
     '#header' => $header,
     '#rows' => $rows,
-    '#empty' => t('No content types available.'),
+    '#empty' => t('No content types available. <a href="@link">Add content type</a>.', array('@link' => url('admin/structure/types/add'))),
   );
 
   return $build;
@@ -234,7 +234,8 @@ function node_type_form($form, &$form_state, $type = NULL) {
     '#value' => $type->locked,
   );
 
-  $form['submit'] = array(
+  $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save content type'),
     '#weight' => 40,
@@ -242,7 +243,7 @@ function node_type_form($form, &$form_state, $type = NULL) {
 
   if ($type->custom) {
     if (!empty($type->type)) {
-      $form['delete'] = array(
+      $form['actions']['delete'] = array(
         '#type' => 'submit',
         '#value' => t('Delete content type'),
         '#weight' => 45,

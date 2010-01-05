@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.369 2009-12-17 13:10:18 dries Exp $
+// $Id: menu.inc,v 1.371 2010-01-04 04:47:24 webchick Exp $
 
 /**
  * @file
@@ -403,13 +403,17 @@ function menu_get_item($path = NULL, $router_item = NULL) {
     $original_map = arg(NULL, $path);
     $parts = array_slice($original_map, 0, MENU_MAX_PARTS);
     $ancestors = menu_get_ancestors($parts);
-    $router_item = db_select('menu_router')
-      ->fields('menu_router')
-      ->condition('path', $ancestors, 'IN')
-      ->orderBy('fit', 'DESC')
-      ->range(0, 1)
-      ->addTag('menu_get_item')
-      ->execute()->fetchAssoc();
+
+    // Since there is no limit to the length of $path, but the cids are
+    // restricted to 255 characters, use md5() to keep it short yet unique.
+    $cid = 'menu_item:' . md5($path);
+    if ($cached = cache_get($cid, 'cache_menu')) {
+      $router_item = $cached->data;
+    }
+    else {
+      $router_item = db_query_range('SELECT * FROM {menu_router} WHERE path IN (:ancestors) ORDER BY fit DESC', 0, 1, array(':ancestors' => $ancestors))->fetchAssoc();
+      cache_set($cid, $router_item, 'cache_menu');
+    }
     if ($router_item) {
       $map = _menu_translate($router_item, $original_map);
       $router_item['original_map'] = $original_map;
@@ -2249,19 +2253,27 @@ function menu_rebuild() {
     return FALSE;
   }
 
-  list($menu, $masks) = menu_router_build();
-  _menu_router_save($menu, $masks);
-  _menu_navigation_links_rebuild($menu);
-  // Clear the menu, page and block caches.
-  menu_cache_clear_all();
-  _menu_clear_page_cache();
+  $transaction = db_transaction();
 
-  if (defined('MAINTENANCE_MODE')) {
-    variable_set('menu_rebuild_needed', TRUE);
+  try {
+    list($menu, $masks) = menu_router_build();
+    _menu_router_save($menu, $masks);
+    _menu_navigation_links_rebuild($menu);
+    // Clear the menu, page and block caches.
+    menu_cache_clear_all();
+    _menu_clear_page_cache();
+
+    if (defined('MAINTENANCE_MODE')) {
+      variable_set('menu_rebuild_needed', TRUE);
+    }
+    else {
+      variable_del('menu_rebuild_needed');
+    }
   }
-  else {
-    variable_del('menu_rebuild_needed');
+  catch (Exception $e) {
+    $transaction->rollback('menu', $e->getMessage(), array(), WATCHDOG_ERROR);
   }
+
   lock_release('menu_rebuild');
   return TRUE;
 }
@@ -3230,6 +3242,8 @@ function _menu_router_save($menu, $masks) {
       'file',
     ));
 
+  $num_records = 0;
+
   foreach ($menu as $path => $item) {
     // Fill in insert object values.
     $insert->values(array(
@@ -3258,8 +3272,15 @@ function _menu_router_save($menu, $masks) {
       'weight' => $item['weight'],
       'file' => $item['include file'],
     ));
+
+    // Execute in batches to avoid the memory overhead of all of those records
+    // in the query object.
+    if (++$num_records == 20) {
+      $insert->execute();
+      $num_records = 0;
+    }
   }
-  // Execute insert object.
+  // Insert any remaining records.
   $insert->execute();
   // Store the masks.
   variable_set('menu_masks', $masks);

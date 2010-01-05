@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1193 2009-12-31 08:26:59 dries Exp $
+// $Id: node.module,v 1.1196 2010-01-04 03:57:19 webchick Exp $
 
 /**
  * @file
@@ -143,10 +143,6 @@ function node_theme() {
     ),
     'node_search_admin' => array(
       'render element' => 'form',
-    ),
-    'node_filter_form' => array(
-      'render element' => 'form',
-      'file' => 'node.admin.inc',
     ),
     'node_filters' => array(
       'render element' => 'form',
@@ -322,7 +318,7 @@ function node_tag_new($nid) {
  */
 function node_last_viewed($nid) {
   global $user;
-  static $history;
+  $history = &drupal_static(__FUNCTION__, array());
 
   if (!isset($history[$nid])) {
     $history[$nid] = db_query("SELECT timestamp FROM {history} WHERE uid = :uid AND nid = :nid", array(':uid' => $user->uid, ':nid' => $nid))->fetchObject();
@@ -343,7 +339,7 @@ function node_last_viewed($nid) {
  */
 function node_mark($nid, $timestamp) {
   global $user;
-  static $cache;
+  $cache = &drupal_static(__FUNCTION__, array());
 
   if (!$user->uid) {
     return MARK_READ;
@@ -748,7 +744,7 @@ function _node_types_build() {
  *  A node type object.
  */
 function node_type_set_defaults($info = array()) {
-  static $type;
+  $type = &drupal_static(__FUNCTION__);
 
   if (!isset($type)) {
     $type = new stdClass();
@@ -1190,9 +1186,11 @@ function node_view($node, $view_mode = 'full') {
     '#node' => $node,
     '#view_mode' => $view_mode,
   );
-  // Add contextual links for this node.
+  // Add contextual links for this node except for 'full' view mode.
   // @todo Make this configurable per view mode.
-  $build['#contextual_links']['node'] = array('node', array($node->nid));
+  if ($view_mode != 'full') {
+    $build['#contextual_links']['node'] = array('node', array($node->nid));
+  }
 
   // Allow modules to modify the structured node.
   drupal_alter('node_view', $build);
@@ -2662,7 +2660,7 @@ function node_access_grants($op, $account = NULL) {
  * Determine whether the user has a global viewing grant for all nodes.
  */
 function node_access_view_all_nodes() {
-  static $access;
+  $access = &drupal_static(__FUNCTION__);
 
   if (!isset($access)) {
     // If no modules implement the node access system, access is always true.

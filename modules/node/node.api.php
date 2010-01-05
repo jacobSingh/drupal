@@ -1,5 +1,5 @@
 <?php
-// $Id: node.api.php,v 1.52 2009-12-26 16:50:09 dries Exp $
+// $Id: node.api.php,v 1.54 2010-01-04 20:34:28 dries Exp $
 
 /**
  * @file
@@ -28,7 +28,7 @@
  * A node access module may implement as many realms as necessary to
  * properly define the access privileges for the nodes.
  *
- * @param $user
+ * @param $account
  *   The user object whose grants are requested.
  * @param $op
  *   The node operation to be performed, such as "view", "update", or "delete".
@@ -45,7 +45,7 @@ function hook_node_grants($account, $op) {
   if (user_access('access private content', $account)) {
     $grants['example'] = array(1);
   }
-  $grants['example_owner'] = array($user->uid);
+  $grants['example_owner'] = array($account->uid);
   return $grants;
 }
 
@@ -999,11 +999,10 @@ function hook_validate($node, &$form) {
 function hook_view($node, $view_mode = 'full') {
   if (node_is_page($node)) {
     $breadcrumb = array();
-    $breadcrumb[] = array('path' => 'example', 'title' => t('example'));
-    $breadcrumb[] = array('path' => 'example/' . $node->field1,
-      'title' => t('%category', array('%category' => $node->field1)));
-    $breadcrumb[] = array('path' => 'node/' . $node->nid);
-    menu_set_location($breadcrumb);
+    $breadcrumb[] = l(t('Home'), NULL);
+    $breadcrumb[] = l(t('Example'), 'example');
+    $breadcrumb[] = l($node->field1, 'example/' . $node->field1);
+    drupal_set_breadcrumb($breadcrumb);
   }
 
   $node->content['myfield'] = array(

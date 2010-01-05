@@ -1,5 +1,5 @@
 <?php
-// $Id: user.module,v 1.1095 2009-12-26 16:50:09 dries Exp $
+// $Id: user.module,v 1.1098 2010-01-03 21:01:04 webchick Exp $
 
 /**
  * @file
@@ -106,10 +106,6 @@ function user_theme() {
       'render element' => 'form',
       'file' => 'user.admin.inc',
     ),
-    'user_filter_form' => array(
-      'render element' => 'form',
-      'file' => 'user.admin.inc',
-    ),
     'user_filters' => array(
       'render element' => 'form',
       'file' => 'user.admin.inc',
@@ -155,28 +151,26 @@ function user_entity_info() {
 /**
  * Implements hook_field_extra_fields().
  */
-function user_field_extra_fields($bundle) {
-  $extra = array();
-
-  if ($bundle == 'user') {
-    $extra['account'] = array(
+function user_field_extra_fields() {
+  $return['user']['user'] = array(
+    'account' => array(
       'label' => 'User name and password',
       'description' => t('User module account form elements'),
       'weight' => -10,
-    );
-    $extra['timezone'] = array(
+    ),
+    'timezone' => array(
       'label' => 'Timezone',
       'description' => t('User module timezone form element.'),
       'weight' => 6,
-    );
-    $extra['summary'] = array(
+    ),
+    'summary' => array(
       'label' => 'History',
       'description' => t('User module history view element.'),
       'weight' => 5,
-    );
-  }
+    ),
+  );
 
-  return $extra;
+  return $return;
 }
 
 function user_external_load($authname) {
@@ -3215,16 +3209,14 @@ function user_modules_installed($modules) {
   // Assign all available permissions to the administrator role.
   $rid = variable_get('user_admin_role', 0);
   if ($rid) {
+    $permissions = array();
     foreach ($modules as $module) {
-      if ($permissions = module_invoke($module, 'permission')) {
-        foreach (array_keys($permissions) as $permission) {
-          db_insert('role_permission')
-            ->fields(array(
-              'rid' => $rid,
-              'permission' => $permission,
-            ))->execute();
-        }
+      if ($module_permissions = module_invoke($module, 'permission')) {
+        $permissions = array_merge($permissions, array_keys($module_permissions));
       }
+    }
+    if (!empty($permissions)) {
+      user_role_grant_permissions($rid, $permissions);
     }
   }
 }

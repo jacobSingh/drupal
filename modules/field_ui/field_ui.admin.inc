@@ -1,5 +1,5 @@
 <?php
-// $Id: field_ui.admin.inc,v 1.33 2009-12-26 16:50:08 dries Exp $
+// $Id: field_ui.admin.inc,v 1.35 2010-01-03 21:01:04 webchick Exp $
 
 /**
  * @file
@@ -83,7 +83,7 @@ function field_ui_field_overview_form($form, &$form_state, $obj_type, $bundle) {
   $field_types = field_info_field_types();
   $widget_types = field_info_widget_types();
 
-  $extra = field_extra_fields($bundle);
+  $extra = field_extra_fields($obj_type, $bundle);
 
   // Store each default weight so that we can add the 'add new' rows after them.
   $weights = array();
@@ -479,12 +479,9 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
     }
   }
 
-  if ($extra) {
-    variable_set("field_extra_weights_$bundle", $extra);
-  }
-  else {
-    variable_del("field_extra_weights_$bundle");
-  }
+  $extra_weights = variable_get('field_extra_weights', array());
+  $extra_weights[$obj_type][$bundle] = $extra;
+  variable_set('field_extra_weights', $extra_weights);
 
   $destinations = array();
 
@@ -870,7 +867,8 @@ function field_ui_field_settings_form($form, &$form_state, $obj_type, $bundle, $
   $form['#object_type'] = $obj_type;
   $form['#bundle'] = $bundle;
 
-  $form['submit'] = array('#type' => 'submit', '#value' => t('Save field settings'));
+  $form['actions'] = array('#type' => 'container', '#attributes' => array('class' => array('form-actions')));
+  $form['actions']['submit'] = array('#type' => 'submit', '#value' => t('Save field settings'));
   return $form;
 }
 
