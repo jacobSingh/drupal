@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1077 2010-01-04 23:08:34 webchick Exp $
+// $Id: common.inc,v 1.1080 2010-01-07 07:45:03 webchick Exp $
 
 /**
  * @file
@@ -2278,9 +2278,11 @@ function format_interval($timestamp, $granularity = 2, $langcode = NULL) {
  */
 function format_date($timestamp, $type = 'medium', $format = '', $timezone = NULL, $langcode = NULL) {
   // Use the advanced drupal_static() pattern, since this is called very often.
-  static $drupal_static = array();
-  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
-  $timezones = &$drupal_static[__FUNCTION__];
+  static $drupal_static_fast;
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast['timezones'] = &drupal_static(__FUNCTION__);
+  }
+  $timezones = &$drupal_static_fast['timezones'];
 
   if (!isset($timezone)) {
     global $user;
@@ -2519,9 +2521,11 @@ function url($path = NULL, array $options = array()) {
 
   global $base_url, $base_secure_url, $base_insecure_url;
   // Use the advanced drupal_static() pattern, since this is called very often.
-  static $drupal_static = array();
-  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
-  $script = &$drupal_static[__FUNCTION__];
+  static $drupal_static_fast;
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast['script'] = &drupal_static(__FUNCTION__);
+  }
+  $script = &$drupal_static_fast['script'];
 
   if (!isset($script)) {
     // On some web servers, such as IIS, we can't omit "index.php". So, we
@@ -2993,20 +2997,11 @@ function drupal_exit($destination = NULL) {
  *   An associative array.
  */
 function drupal_map_assoc($array, $function = NULL) {
-  if (!isset($function)) {
-    $result = array();
-    foreach ($array as $value) {
-      $result[$value] = $value;
-    }
-    return $result;
+  $array = array_combine($array, $array);
+  if (is_callable($function)) {
+    $array = array_map($function, $array);
   }
-  elseif (function_exists($function)) {
-    $result = array();
-    foreach ($array as $value) {
-      $result[$value] = $function($value);
-    }
-    return $result;
-  }
+  return $array;
 }
 
 /**
@@ -3502,8 +3497,17 @@ function _drupal_load_stylesheet($matches) {
   $filename = $matches[1];
   // Load the imported stylesheet and replace @import commands in there as well.
   $file = drupal_load_stylesheet($filename);
-  // Alter all url() paths, but not external.
-  return preg_replace('/url\(([\'"]?)(?![a-z]+:)([^\'")]+)[\'"]?\)?;/i', 'url(\1' . dirname($filename) . '/', $file);
+
+  // Determine the file's directory.
+  $directory = dirname($filename);
+  // If the file is in the current directory, make sure '.' doesn't appear in
+  // the url() path.
+  $directory = $directory == '.' ? '' : $directory .'/';
+
+  // Alter all internal url() paths. Leave external paths alone. We don't need
+  // to normalize absolute paths here (i.e. remove folder/... segments) because
+  // that will be done later.
+  return preg_replace('/url\s*\(([\'"]?)(?![a-z]+:|\/+)/i', 'url(\1'. $directory, $file);
 }
 
 /**
@@ -4778,9 +4782,11 @@ function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1)
  */
 function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
   // Use the advanced drupal_static() pattern, since this is called very often.
-  static $drupal_static = array();
-  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
-  $functions = &$drupal_static[__FUNCTION__];
+  static $drupal_static_fast;
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast['functions'] = &drupal_static(__FUNCTION__);
+  }
+  $functions = &$drupal_static_fast['functions'];
 
   // Some alter hooks are invoked many times per page request, so statically
   // cache the list of functions to call, and on subsequent calls, iterate
@@ -6280,9 +6286,11 @@ function drupal_check_incompatibility($v, $current_version) {
  */
 function entity_get_info($entity_type = NULL) {
   // Use the advanced drupal_static() pattern, since this is called very often.
-  static $drupal_static = array();
-  isset($drupal_static[__FUNCTION__]) || ($drupal_static[__FUNCTION__] = &drupal_static(__FUNCTION__));
-  $entity_info = &$drupal_static[__FUNCTION__];
+  static $drupal_static_fast;
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast['entity_info'] = &drupal_static(__FUNCTION__);
+  }
+  $entity_info = &$drupal_static_fast['entity_info'];
 
   if (empty($entity_info)) {
     if ($cache = cache_get('entity_info')) {

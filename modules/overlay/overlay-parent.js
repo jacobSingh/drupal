@@ -1,4 +1,4 @@
-// $Id: overlay-parent.js,v 1.12 2010-01-06 04:03:39 webchick Exp $
+// $Id: overlay-parent.js,v 1.15 2010-01-07 04:47:38 webchick Exp $
 
 (function ($) {
 
@@ -283,19 +283,17 @@ Drupal.overlay.load = function (url) {
   // Change the overlay title.
   self.$container.dialog('option', 'title', Drupal.t('Loading...'));
 
-  // When a new overlay is opened and loaded, we add a loaded class to the
-  // dialog. The loaded class is not removed and added back again while
-  // switching between pages with the overlay already open, due to
-  // performance issues (see http://drupal.org/node/615130).
+  // While the overlay is loading, we remove the loaded class from the dialog.
+  // After the loading is finished, the loaded class is added back. The loaded 
+  // class is being used to hide the iframe while loading.
+  // @see overlay-parent.css .overlay-loaded #overlay-element
   self.$dialog.removeClass('overlay-loaded');
   self.$iframe
-    .css('visibility', 'hidden')
     .bind('load.overlay-event', function () {
       self.isLoading = false;
 
       // Only continue when overlay is still open and not closing.
       if (self.isOpen && !self.isClosing) {
-        self.$iframe.css('visibility', '');
         self.$dialog.addClass('overlay-loaded');
       }
       else {
@@ -528,26 +526,6 @@ Drupal.overlay.bindChild = function (iframeWindow, isClosing) {
   if (iframeWindow.document.location.hash) {
     window.scrollTo(0, self.$iframeWindow(iframeWindow.document.location.hash).position().top);
   }
-};
-
-/**
- * Unbind the child window.
- *
- * Remove keyboard event handlers, reset title and hide the iframe.
- */
-Drupal.overlay.unbindChild = function (iframeWindow) {
-  var self = this;
-  var $iframeDocument = iframeWindow.jQuery(iframeWindow.document);
-
-  // Prevent memory leaks by explicitly unbinding keyboard event handler
-  // on the child document.
-  $iframeDocument.unbind('keydown.overlay-event');
-
-  // Change the overlay title.
-  self.$container.dialog('option', 'title', Drupal.t('Please wait...'));
-
-  // Hide the iframe element.
-  self.$iframe.fadeOut('fast');
 };
 
 /**
@@ -818,8 +796,12 @@ Drupal.overlay.fragmentizeLink = function (link) {
   var destination = path + link.search + link.hash;
 
   // Assemble the overlay-ready link.
-  var base = window.location.href;
-  return $.param.fragment(base, {'overlay':destination});
+  var newLink = $.param.fragment(window.location.href, { overlay: destination });
+  // $.param.fragment() escaped slashes in the overlay part: unescape them.
+  var regexp = new RegExp("[#&]overlay=" + encodeURIComponent(path));
+  newLink = newLink.replace(regexp, decodeURIComponent);
+
+  return newLink;
 };
 
 /**
