@@ -1,5 +1,5 @@
 <?php
-// $Id: node.admin.inc,v 1.83 2010-01-03 21:01:04 webchick Exp $
+// $Id: node.admin.inc,v 1.86 2010-01-08 07:36:53 webchick Exp $
 
 /**
  * @file
@@ -133,8 +133,8 @@ function node_build_filter_query(SelectQueryInterface $query) {
     list($key, $value) = $filter;
     switch ($key) {
       case 'term':
-        $index = 'tn' . $counter++;
-        $query->join('taxonomy_term_node', $index, "n.nid = $index.nid");
+        $index = 'ti' . $counter++;
+        $query->join('taxonomy_index', $index, "n.nid = $index.nid");
         $query->condition($index . '.tid', $value);
         break;
       case 'status':
@@ -425,7 +425,7 @@ function node_admin_nodes() {
   $header = array(
     'title' => array('data' => t('Title'), 'field' => 'n.title'),
     'type' => array('data' => t('Type'), 'field' => 'n.type'),
-    'author' => array('data' => t('Author'), 'field' => 'u.name'),
+    'author' => t('Author'),
     'status' => array('data' => t('Status'), 'field' => 'n.status'),
     'changed' => array('data' => t('Updated'), 'field' => 'n.changed', 'sort' => 'desc')
   );
@@ -505,7 +505,7 @@ function node_admin_nodes() {
       // Render an unordered list of operations links.
       $options[$node->nid]['operations'] = array(
         'data' => array(
-          '#theme' => 'links',
+          '#theme' => 'links__node_operations',
           '#links' => $operations,
           '#attributes' => array('class' => array('links', 'inline')),
         ),

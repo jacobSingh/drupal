@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1080 2010-01-07 07:45:03 webchick Exp $
+// $Id: common.inc,v 1.1082 2010-01-08 06:07:03 webchick Exp $
 
 /**
  * @file
@@ -1036,6 +1036,35 @@ function drupal_http_request($url, array $options = array()) {
  */
 
 /**
+ * Map PHP error constants to watchdog severity levels.
+ * The error constants are documented at
+ * http://php.net/manual/en/errorfunc.constants.php
+ */
+function drupal_error_levels() {
+  $types = array(
+    E_ERROR => array('Error', WATCHDOG_ERROR),
+    E_WARNING => array('Warning', WATCHDOG_WARNING),
+    E_PARSE => array('Parse error', WATCHDOG_ERROR),
+    E_NOTICE => array('Notice', WATCHDOG_NOTICE),
+    E_CORE_ERROR => array('Core error', WATCHDOG_ERROR),
+    E_CORE_WARNING => array('Core warning', WATCHDOG_WARNING),
+    E_COMPILE_ERROR => array('Compile error', WATCHDOG_ERROR),
+    E_COMPILE_WARNING => array('Compile warning', WATCHDOG_WARNING),
+    E_USER_ERROR => array('User error', WATCHDOG_ERROR),
+    E_USER_WARNING => array('User warning', WATCHDOG_WARNING),
+    E_USER_NOTICE => array('User notice', WATCHDOG_NOTICE),
+    E_STRICT => array('Strict warning', WATCHDOG_DEBUG),
+    E_RECOVERABLE_ERROR => array('Recoverable fatal error', WATCHDOG_ERROR),
+  );
+  // E_DEPRECATED and E_USER_DEPRECATED were added in PHP 5.3.0.
+  if (defined('E_DEPRECATED')) {
+    $types[E_DEPRECATED] = array('Deprecated function', WATCHDOG_DEBUG);
+    $types[E_USER_DEPRECATED] = array('User deprecated function', WATCHDOG_DEBUG);
+  }
+  return $types;
+}
+
+/**
  * Custom PHP error handler.
  *
  * @param $error_level
@@ -1051,36 +1080,18 @@ function drupal_http_request($url, array $options = array()) {
  */
 function _drupal_error_handler($error_level, $message, $filename, $line, $context) {
   if ($error_level & error_reporting()) {
-    // All these constants are documented at http://php.net/manual/en/errorfunc.constants.php
-    $types = array(
-      E_ERROR => 'Error',
-      E_WARNING => 'Warning',
-      E_PARSE => 'Parse error',
-      E_NOTICE => 'Notice',
-      E_CORE_ERROR => 'Core error',
-      E_CORE_WARNING => 'Core warning',
-      E_COMPILE_ERROR => 'Compile error',
-      E_COMPILE_WARNING => 'Compile warning',
-      E_USER_ERROR => 'User error',
-      E_USER_WARNING => 'User warning',
-      E_USER_NOTICE => 'User notice',
-      E_STRICT => 'Strict warning',
-      E_RECOVERABLE_ERROR => 'Recoverable fatal error'
-    );
-    // E_DEPRECATED and E_USER_DEPRECATED were added in PHP 5.3.0.
-    if (defined('E_DEPRECATED')) {
-      $types[E_DEPRECATED] = 'Deprecated function';
-      $types[E_USER_DEPRECATED] = 'User deprecated function';
-    }
+    $types = drupal_error_levels();
+    list($severity_msg, $severity_level) = $types[$error_level];
     $caller = _drupal_get_last_caller(debug_backtrace());
 
     // We treat recoverable errors as fatal.
     _drupal_log_error(array(
-      '%type' => isset($types[$error_level]) ? $types[$error_level] : 'Unknown error',
+      '%type' => isset($types[$error_level]) ? $severity_msg : 'Unknown error',
       '%message' => $message,
       '%function' => $caller['function'],
       '%file' => $caller['file'],
       '%line' => $caller['line'],
+      'severity_level' => $severity_level,
     ), $error_level == E_RECOVERABLE_ERROR);
   }
 }
@@ -1181,7 +1192,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
   }
 
   try {
-    watchdog('php', '%type: %message in %function (line %line of %file).', $error, WATCHDOG_ERROR);
+    watchdog('php', '%type: %message in %function (line %line of %file).', $error, $error['severity_level']);
   }
   catch (Exception $e) {
     // Ignore any additional watchdog exception, as that probably means
@@ -5762,19 +5773,18 @@ function drupal_schema_fields_sql($table, $prefix = NULL) {
  * @param $table
  *   The name of the table; this must exist in schema API.
  * @param $object
- *   The object to write. This is a reference, as defaults according to
- *   the schema may be filled in on the object, as well as ID on the serial
- *   type(s). Both array and object types may be passed.
+ *   The object to write. This is a reference, as defaults according to the
+ *   schema may be filled in on the object, as well as ID on the serial type(s).
+ *   Both array and object types may be passed.
  * @param $primary_keys
  *   If this is an update, specify the primary keys' field names. It is the
- *   caller's responsibility to know if a record for this object already
- *   exists in the database. If there is only 1 key, you may pass a simple string.
+ *   caller's responsibility to know if a record for this object already exists
+ *   in the database. If there is only 1 key, you may pass a simple string.
  * @return
  *   Failure to write a record will return FALSE. Otherwise SAVED_NEW or
- *   SAVED_UPDATED is returned depending on the operation performed. The
- *   $object parameter contains values for any serial fields defined by
- *   the $table. For example, $object->nid will be populated after inserting
- *   a new node.
+ *   SAVED_UPDATED is returned depending on the operation performed. The $object
+ *   parameter contains values for any serial fields defined by the $table. For
+ *   example, $object->nid will be populated after inserting a new a new node.
  */
 function drupal_write_record($table, &$object, $primary_keys = array()) {
   // Standardize $primary_keys to an array.
@@ -5801,54 +5811,52 @@ function drupal_write_record($table, &$object, $primary_keys = array()) {
   // Go through our schema, build SQL, and when inserting, fill in defaults for
   // fields that are not set.
   foreach ($schema['fields'] as $field => $info) {
-    // Special case -- skip serial types if we are updating.
-    if ($info['type'] == 'serial' && !empty($primary_keys)) {
-      continue;
-    }
-
-    // For inserts, populate defaults from schema if not already provided.
-    if (!isset($object->$field) && empty($primary_keys) && isset($info['default'])) {
-      $object->$field = $info['default'];
-    }
-
-    // Track serial field so we can helpfully populate them after the query.
-    // NOTE: Each table should come with one serial field only.
     if ($info['type'] == 'serial') {
+      // Skip serial types if we are updating.
+      if (!empty($primary_keys)) {
+        continue;
+      }
+      // Track serial field so we can helpfully populate them after the query.
+      // NOTE: Each table should come with one serial field only.
       $serial = $field;
     }
 
-    // Build arrays for the fields and values in our query.
-    if (isset($object->$field)) {
-      if (empty($info['serialize'])) {
-        $fields[$field] = $object->$field;
+    if (!property_exists($object, $field)) {
+      // Skip fields that are not provided, unless we are inserting and a
+      // default value is provided by the schema.
+      if (!empty($primary_keys) || !isset($info['default'])) {
+        continue;
       }
-      elseif (!empty($object->$field)) {
-        $fields[$field] = serialize($object->$field);
-      }
-      else {
-        $fields[$field] = '';
-      }
+      $object->$field = $info['default'];
     }
 
-    // We don't need to care about type casting if value does not exist.
-    if (!isset($fields[$field])) {
-      continue;
+    // Build array of fields to update or insert.
+    if (empty($info['serialize'])) {
+      $fields[$field] = $object->$field;
     }
-
-    // Special case -- skip null value if field allows null.
-    if ($fields[$field] == NULL && $info['not null'] == FALSE) {
-      continue;
-    }
-
-    // Type cast if field does not allow null. Required by DB API.
-    if ($info['type'] == 'int' || $info['type'] == 'serial') {
-      $fields[$field] = (int) $fields[$field];
-    }
-    elseif ($info['type'] == 'float') {
-      $fields[$field] = (float) $fields[$field];
+    elseif (!empty($object->$field)) {
+      $fields[$field] = serialize($object->$field);
     }
     else {
-      $fields[$field] = (string) $fields[$field];
+      $fields[$field] = '';
+    }
+
+    // Type cast to proper datatype, except when the value is NULL and the
+    // column allows this.
+    //
+    // MySQL PDO silently casts e.g. FALSE and '' to 0 when inserting the value
+    // into an integer column, but PostgreSQL PDO does not. Also type cast NULL
+    // when the column does not allow this.
+    if (!is_null($object->$field) || !empty($info['not null'])) {
+      if ($info['type'] == 'int' || $info['type'] == 'serial') {
+        $fields[$field] = (int) $fields[$field];
+      }
+      elseif ($info['type'] == 'float') {
+        $fields[$field] = (float) $fields[$field];
+      }
+      else {
+        $fields[$field] = (string) $fields[$field];
+      }
     }
   }
 
